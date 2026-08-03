@@ -2,6 +2,8 @@
 
 ## Issue 与 Discussion
 
+官网入口：[论坛](https://clippad.vip/community) · [支持中心](https://clippad.vip/support) · [下载](https://clippad.vip/download)
+
 - Issue：用于可复现的脚本缺陷、Host 兼容性问题、提示词回归和文档错误。
 - Discussion：用于新脚本想法、Host API 设计、分类规则、提示词共同创作和性能经验。
 - Security：涉及密钥、任意文件写入、文档破坏、权限绕过或供应链问题时，不要公开细节。

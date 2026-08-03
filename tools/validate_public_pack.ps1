@@ -1,6 +1,7 @@
 ﻿[CmdletBinding()]
 param(
-    [string]$Root = ""
+    [string]$Root = "",
+    [string]$ScriptPath = ""
 )
 
 Set-StrictMode -Version Latest
@@ -21,6 +22,78 @@ function Read-Json([string]$Path) {
         Fail ("Missing JSON file: " + $Path)
     }
     return Get-Content -Raw -Encoding UTF8 $Path | ConvertFrom-Json
+}
+
+function Get-VbsHeaderMetadata([string]$Text) {
+    $metadata = @{}
+    $lines = $Text -split "`r?`n"
+    foreach ($line in $lines) {
+        $trim = $line.Trim()
+        while (-not [string]::IsNullOrEmpty($trim) -and [int][char]$trim[0] -eq 0xFEFF) {
+            $trim = $trim.Substring(1).TrimStart()
+        }
+        if ([string]::IsNullOrWhiteSpace($trim)) {
+            continue
+        }
+        if (-not $trim.StartsWith("'")) {
+            break
+        }
+
+        $content = $trim.Substring(1).Trim()
+        $colon = $content.IndexOf(":")
+        if ($colon -lt 0) {
+            $colon = $content.IndexOf("：")
+        }
+        if ($colon -gt 0) {
+            $key = $content.Substring(0, $colon).Trim()
+            $value = $content.Substring($colon + 1).Trim()
+            $metadata[$key] = $value
+        }
+    }
+    return $metadata
+}
+
+function Test-VbsScript([string]$Path, [bool]$RequireMetadata) {
+    if (-not (Test-Path -LiteralPath $Path -PathType Leaf)) {
+        Fail ("VBS file not found: " + $Path)
+    }
+    if ([IO.Path]::GetExtension($Path).ToLowerInvariant() -ne ".vbs") {
+        Fail ("Expected a .vbs file: " + $Path)
+    }
+
+    $bytes = [IO.File]::ReadAllBytes($Path)
+    if ($bytes.Length -lt 3 -or $bytes[0] -ne 239 -or $bytes[1] -ne 187 -or $bytes[2] -ne 191) {
+        Fail ("VBS file is not UTF-8 BOM: " + $Path)
+    }
+
+    $text = [IO.File]::ReadAllText($Path, [Text.Encoding]::UTF8)
+    if ($text -notmatch "(?im)^\s*Function\s+Main\s*\(\s*\)") {
+        Fail ("VBS file must contain a parameterless Function Main(): " + $Path)
+    }
+
+    $unsafePattern = "CreateObject|GetObject|WScript\.Shell|Shell\.Application|ADODB\.Stream|FileSystemObject|InputBox|MsgBox|(^|[^A-Za-z])Shell([^A-Za-z]|$)"
+    if ($text -match $unsafePattern) {
+        Fail ("Unsafe API found in public VBS: " + $Path)
+    }
+
+    if ($RequireMetadata) {
+        $metadata = Get-VbsHeaderMetadata $text
+        $hasFunctionName = $metadata.ContainsKey("函数名") -and -not [string]::IsNullOrWhiteSpace([string]$metadata["函数名"])
+        $hasDescription = ($metadata.ContainsKey("描述") -and -not [string]::IsNullOrWhiteSpace([string]$metadata["描述"])) -or
+            ($metadata.ContainsKey("Description") -and -not [string]::IsNullOrWhiteSpace([string]$metadata["Description"])) -or
+            ($metadata.ContainsKey("说明") -and -not [string]::IsNullOrWhiteSpace([string]$metadata["说明"]))
+        $hasApp = $metadata.ContainsKey("适用应用") -and -not [string]::IsNullOrWhiteSpace([string]$metadata["适用应用"])
+        if (-not $hasFunctionName -or -not $hasDescription -or -not $hasApp) {
+            Fail ("VBS header must contain 函数名, 描述/Description, and 适用应用 before code: " + $Path)
+        }
+    }
+}
+
+if (-not [string]::IsNullOrWhiteSpace($ScriptPath)) {
+    $scriptFullPath = (Resolve-Path -LiteralPath $ScriptPath -ErrorAction Stop).ProviderPath
+    Test-VbsScript $scriptFullPath $true
+    Write-Host ("[public-pack] single VBS validation passed: " + $scriptFullPath)
+    exit 0
 }
 
 $requiredFiles = @(
@@ -62,22 +135,11 @@ if ($vbsFiles.Count -ne ($expectedVbs + $expectedExamples)) {
     Fail ("Unexpected public VBS count: expected " + ($expectedVbs + $expectedExamples) + ", got " + $vbsFiles.Count)
 }
 
-$unsafePattern = "CreateObject|GetObject|WScript\.Shell|Shell\.Application|ADODB\.Stream|FileSystemObject|InputBox|MsgBox"
 foreach ($file in $vbsFiles) {
-    $bytes = [System.IO.File]::ReadAllBytes($file.FullName)
-    if ($bytes.Length -lt 3 -or $bytes[0] -ne 239 -or $bytes[1] -ne 187 -or $bytes[2] -ne 191) {
-        Fail ("VBS file is not UTF-8 BOM: " + $file.FullName)
-    }
-
-    $text = [System.IO.File]::ReadAllText($file.FullName, [System.Text.Encoding]::UTF8)
-    if ($text -notmatch "(?im)^\s*Function\s+Main\s*\(") {
-        Fail ("VBS file has no Function Main(): " + $file.FullName)
-    }
-    if ($text -match $unsafePattern) {
-        Fail ("Unsafe API found in public VBS: " + $file.FullName)
-    }
+    Test-VbsScript $file.FullName $true
 }
 
+$unsafePattern = "CreateObject|GetObject|WScript\.Shell|Shell\.Application|ADODB\.Stream|FileSystemObject|InputBox|MsgBox"
 $workflowRoot = Join-Path $rootPath "examples/workflows"
 $workflowFiles = @(Get-ChildItem -LiteralPath $workflowRoot -Filter "*.json" -File)
 if ($workflowFiles.Count -ne $expectedWorkflows) {

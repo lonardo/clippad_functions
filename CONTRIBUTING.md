@@ -2,6 +2,12 @@
 
 欢迎提交 VBS、Host 提示词、工作流示例和文档改进。
 
+开始前先阅读：
+
+- [`docs/vbs-contribution-format.md`](docs/vbs-contribution-format.md)：头部注释、`Function Main()`、Host/COM 边界和文件布局；
+- [`docs/testing.md`](docs/testing.md)：单文件校验、整包校验、索引刷新和真实 Office 测试；
+- [`prompts/vbs-system-prompt.md`](prompts/vbs-system-prompt.md)：给生成器使用的约束模板。
+
 ## 提交范围
 
 - VBS 必须以 Host-first 方式访问 Office、文件、剪贴板和事务能力。
@@ -23,3 +29,5 @@
 - [ ] 已在测试环境验证，未直接发布生产环境。
 - [ ] 变更说明包含目标 Office 应用、输入、输出、风险和回滚方式。
 - [ ] 提示词变更附带至少一个输入、期望结果和失败案例。
+- [ ] 新增脚本已说明如何复制到客户端 `VBA Script` 根目录并刷新索引。
+- [ ] 已在 [官网论坛](https://clippad.vip/community) 或 Issue 中记录用户可复现的限制（如有）。

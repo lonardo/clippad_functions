@@ -1,8 +1,8 @@
 {
   "schemaVersion": 1,
   "kind": "officeaddin_public_export",
-  "exportId": "community-v0.1.0-draft",
-  "exportDate": "2026-08-02",
+  "exportId": "community-v0.1.1",
+  "exportDate": "2026-08-04",
   "license": "Apache-2.0",
   "officeSupport": "Office 2010 and newer (tested)",
   "included": {
