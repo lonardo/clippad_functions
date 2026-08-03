@@ -1,0 +1,109 @@
+{
+  "$schema": "../workflow-schema.json",
+  "workflow": {
+    "id": "file_batch_processing_001",
+    "name": "文件批处理工作流",
+    "version": "1.0.0",
+    "description": "批量处理文本文件，执行查找替换并保存到新位置",
+    "created": "2024-01-15T08:30:00Z",
+    "author": "示例用户",
+    "tags": ["文件处理", "文本转换", "批处理"],
+    
+    "segments": [
+      {
+        "id": "input_001",
+        "type": "input",
+        "name": "选择输入文件夹",
+        "template_id": "file_folder_input",
+        "description": "让用户选择包含待处理文件的文件夹",
+        "parameters": {
+          "path_variable": "inputFolder",
+          "filter": "*.txt",
+          "recursive": false,
+          "description": "请选择包含文本文件的文件夹"
+        },
+        "position": {"x": 100, "y": 100},
+        "next": ["process_001"]
+      },
+      
+      {
+        "id": "process_001",
+        "type": "process",
+        "name": "文本查找替换",
+        "template_id": "text_replace",
+        "description": "在所有文件中执行文本替换操作",
+        "parameters": {
+          "find_pattern": "旧文本",
+          "replace_with": "新文本",
+          "case_sensitive": false,
+          "whole_word": false
+        },
+        "dependencies": ["input_001"],
+        "position": {"x": 300, "y": 100},
+        "next": ["output_001"]
+      },
+      
+      {
+        "id": "output_001",
+        "type": "output",
+        "name": "保存处理结果",
+        "template_id": "file_write",
+        "description": "将处理后的文件保存到输出文件夹",
+        "parameters": {
+          "output_folder": "{{inputFolder}}_processed",
+          "filename_suffix": "_converted",
+          "overwrite": false,
+          "create_folder": true
+        },
+        "dependencies": ["process_001"],
+        "position": {"x": 500, "y": 100},
+        "next": ["log_001"]
+      },
+      
+      {
+        "id": "log_001",
+        "type": "output",
+        "name": "记录处理日志",
+        "template_id": "log_write",
+        "description": "记录处理统计信息",
+        "parameters": {
+          "log_file": "{{inputFolder}}_processing.log",
+          "log_level": "info",
+          "include_timestamp": true
+        },
+        "dependencies": ["output_001"],
+        "position": {"x": 700, "y": 100},
+        "next": []
+      }
+    ],
+    
+    "variables": {
+      "inputFolder": {
+        "type": "string",
+        "value": "",
+        "description": "用户选择的输入文件夹路径"
+      },
+      "processedCount": {
+        "type": "integer",
+        "value": 0,
+        "description": "已处理的文件数量"
+      },
+      "errorCount": {
+        "type": "integer",
+        "value": 0,
+        "description": "处理失败的文件数量"
+      }
+    },
+    
+    "metadata": {
+      "category": "文件处理",
+      "difficulty": "简单",
+      "estimated_time": "5分钟",
+      "requirements": [
+        "Windows Script Host",
+        "文件系统访问权限"
+      ],
+      "notes": "此工作流适用于批量文本文件处理场景"
+    }
+  }
+}

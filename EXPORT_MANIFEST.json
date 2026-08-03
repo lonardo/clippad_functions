@@ -1,0 +1,41 @@
+{
+  "schemaVersion": 1,
+  "kind": "officeaddin_public_export",
+  "exportId": "community-v0.1.0-draft",
+  "exportDate": "2026-08-02",
+  "license": "Apache-2.0",
+  "officeSupport": "Office 2010 and newer (tested)",
+  "included": {
+    "vbs": {
+      "common": 11,
+      "word": 24,
+      "excel": 31,
+      "powerpoint": 28,
+      "total": 94
+    },
+    "workflowExamples": 4,
+    "hostMethods": 116,
+    "vbsExamples": 2
+  },
+  "sourceAllowlist": [
+    "VBA Script/Host预设_*.vbs",
+    "workflows/examples/advanced_data_processing.json",
+    "workflows/examples/file_batch_process.json",
+    "workflows/examples/file_batch_processing.json",
+    "workflows/examples/segmented_workflow.json",
+    "Plugin/WorkflowHostMethodList.inl"
+  ],
+  "excludedRepositoryAreas": [
+    "copyright_submission/",
+    "icp_filing/",
+    "patent/",
+    "patent_submission/",
+    "app_market_submission/",
+    "backend/",
+    "logs/",
+    "dist/",
+    "setup signing and deployment materials",
+    "private C++ implementation"
+  ],
+  "publicationRule": "Publish this directory as a separate GitHub repository or release source; do not publish the parent repository."
+}

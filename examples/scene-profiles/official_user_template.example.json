@@ -1,0 +1,18 @@
+﻿{
+  "profileVersion": "0.1.0",
+  "id": "official.user_template",
+  "domain": "official",
+  "displayName": "公文（用户/单位模板档案）",
+  "status": "draft",
+  "source": { "kind": "organization_template", "label": "待由用户选择的单位公文模板", "version": "待确认", "authority": "用户所属单位", "confirmedByUser": false },
+  "applicableDocumentTypes": ["user_selected_official_document"],
+  "formatRules": {
+    "title": { "mode": "sample_derived", "fields": ["font", "size", "alignment", "spacing"], "required": true },
+    "heading": { "mode": "sample_derived", "fields": ["level", "font", "size", "spacing", "indent"], "required": true },
+    "body": { "mode": "sample_derived", "fields": ["font", "size", "alignment", "lineSpacing", "indent"], "required": true },
+    "table": { "mode": "sample_derived", "fields": ["font", "alignment", "borders"], "required": false },
+    "page": { "mode": "sample_derived", "fields": ["paper", "margins", "orientation"], "required": false },
+    "headerFooter": { "mode": "sample_derived", "fields": ["font", "alignment", "spacing"], "required": false }
+  },
+  "guardrails": { "preserveBusinessContent": true, "requiresPreview": true, "requiresConfirmation": true, "prohibitedOperations": ["不要生成或修改公文事实内容", "不要复制样本正文或机构信息", "不要把未确认模板标记为正式档案"] }
+}

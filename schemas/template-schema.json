@@ -1,0 +1,110 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "schemas/template-schema.json",
+  "title": "Template Definition",
+  "type": "object",
+  "required": ["template"],
+  "properties": {
+    "template": {
+      "type": "object",
+      "required": ["id","name","category","description","parameters","code_template"],
+      "properties": {
+        "id": {"type": "string"},
+        "name": {"type": "string"},
+        "category": {"type": "string", "enum": ["input","process","output","control","integration"]},
+        "description": {"type": "string"},
+        "parameters": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/parameter" }
+        },
+        "code_template": {
+          "type": "string",
+          "pattern": "^templates\\/(input|process|output|control|integration)\\/[a-zA-Z0-9_\\-]+\\.vbs\\.template$"
+        }
+      },
+      "additionalProperties": false
+    }
+  },
+  "$defs": {
+    "parameter": {
+      "type": "object",
+      "required": ["name","type","required","description"],
+      "properties": {
+        "name": {
+          "type": "string",
+          "pattern": "^[a-zA-Z_][a-zA-Z0-9_]*$"
+        },
+        "type": {
+          "type": "string",
+          "enum": ["string","number","integer","boolean","object","array"]
+        },
+        "required": { "type": "boolean" },
+        "description": { "type": "string" },
+        "default": {},
+        "enum": {
+          "type": "array",
+          "items": {}
+        },
+        "minLength": { "type": "integer", "minimum": 0 },
+        "maxLength": { "type": "integer", "minimum": 0 },
+        "minimum": { "type": "number" },
+        "maximum": { "type": "number" },
+        "pattern": { "type": "string" }
+      },
+      "allOf": [
+        {
+          "if": { "properties": { "type": { "const": "string" } }, "required": ["type"] },
+          "then": {
+            "properties": {
+              "default": { "type": "string" },
+              "enum": { "items": { "type": "string" } }
+            }
+          }
+        },
+        {
+          "if": { "properties": { "type": { "const": "number" } }, "required": ["type"] },
+          "then": {
+            "properties": {
+              "default": { "type": "number" },
+              "enum": { "items": { "type": "number" } }
+            }
+          }
+        },
+        {
+          "if": { "properties": { "type": { "const": "integer" } }, "required": ["type"] },
+          "then": {
+            "properties": {
+              "default": { "type": "integer" },
+              "enum": { "items": { "type": "integer" } }
+            }
+          }
+        },
+        {
+          "if": { "properties": { "type": { "const": "boolean" } }, "required": ["type"] },
+          "then": {
+            "properties": {
+              "default": { "type": "boolean" },
+              "enum": { "items": { "type": "boolean" } }
+            }
+          }
+        },
+        {
+          "if": { "properties": { "type": { "const": "object" } }, "required": ["type"] },
+          "then": {
+            "properties": {
+              "default": { "type": "object" }
+            }
+          }
+        },
+        {
+          "if": { "properties": { "type": { "const": "array" } }, "required": ["type"] },
+          "then": {
+            "properties": {
+              "default": { "type": "array" }
+            }
+          }
+        }
+      ]
+    }
+  }
+}

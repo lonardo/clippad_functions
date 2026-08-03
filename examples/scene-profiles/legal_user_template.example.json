@@ -1,0 +1,34 @@
+﻿{
+  "profileVersion": "0.1.0",
+  "id": "legal.user_template",
+  "domain": "legal",
+  "displayName": "法律文书（用户模板档案）",
+  "status": "draft",
+  "source": {
+    "kind": "user_template",
+    "label": "待由用户选择的本地法律文书样本",
+    "version": "待确认",
+    "authority": "用户或所属机构提供的模板",
+    "confirmedByUser": false
+  },
+  "applicableDocumentTypes": ["user_selected_legal_document"],
+  "formatRules": {
+    "title": { "mode": "sample_derived", "fields": ["font", "size", "alignment", "spacing"], "required": true },
+    "heading": { "mode": "sample_derived", "fields": ["level", "font", "size", "spacing", "indent"], "required": true },
+    "body": { "mode": "sample_derived", "fields": ["font", "size", "alignment", "lineSpacing", "indent"], "required": true },
+    "table": { "mode": "sample_derived", "fields": ["font", "alignment", "borders", "cellSpacing"], "required": false },
+    "page": { "mode": "sample_derived", "fields": ["paper", "margins", "orientation"], "required": false },
+    "headerFooter": { "mode": "sample_derived", "fields": ["font", "alignment", "spacing"], "required": false }
+  },
+  "guardrails": {
+    "preserveBusinessContent": true,
+    "requiresPreview": true,
+    "requiresConfirmation": true,
+    "prohibitedOperations": [
+      "不要生成或修改当事人事实",
+      "不要生成或修改诉讼请求、法律论证或证据结论",
+      "不要依据模型自行推断法律规则或条文适用",
+      "不要复制样本中的业务文字、页码字段或附件内容"
+    ]
+  }
+}

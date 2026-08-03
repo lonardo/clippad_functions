@@ -1,0 +1,615 @@
+{
+  "schemaVersion": 1,
+  "kind": "officeaddin_host_api",
+  "apiVersion": "v1",
+  "officeSupport": "Office 2010 and newer (tested)",
+  "runtime": "VBScript executed by the OfficeAddin Host runtime",
+  "generatedFrom": "WorkflowHostMethodList.inl",
+  "selectionSemantics": {
+    "Host.GetSelection()": {
+      "available": true,
+      "returns": "plain text from the current Office selection",
+      "interactive": false,
+      "emptyWhen": [
+        "no active host",
+        "no active document",
+        "no selection text"
+      ],
+      "recommendedFor": "read-only text extraction from the current selection",
+      "preferInstead": {
+        "Host.GetSelectionInfo()": "structured selection metadata",
+        "Host.GetSelectionObject()": "object-level Office automation",
+        "App.Selection": "direct access when the injected Office Application object is already available",
+        "Host.SelectRange()": "a new interactive range selection is required"
+      },
+      "appNotes": {
+        "Word": "reads Selection.Text",
+        "Excel": "reads the current Selection Value2 when it is a scalar string or number; multi-cell arrays are not guaranteed to be expanded",
+        "PowerPoint": "reads text available from the current ShapeRange"
+      },
+      "caution": "It does not return a Range/Selection COM object and does not open a selection dialog."
+    }
+  },
+  "methods": [
+    {
+      "name": "Prompt",
+      "category": "basic",
+      "signature": "Host.Prompt(prompt[, default])"
+    },
+    {
+      "name": "Alert",
+      "category": "basic",
+      "signature": "Host.Alert(message)"
+    },
+    {
+      "name": "SelectFile",
+      "category": "file",
+      "signature": "Host.SelectFile([title], [filter])"
+    },
+    {
+      "name": "SelectFolder",
+      "category": "file",
+      "signature": "Host.SelectFolder([title])"
+    },
+    {
+      "name": "SelectRange",
+      "category": "file",
+      "signature": "Host.SelectRange([prompt], [rangeType])"
+    },
+    {
+      "name": "SaveFile",
+      "category": "file",
+      "signature": "Host.SaveFile([title], [filter], [defaultName])"
+    },
+    {
+      "name": "ConfirmStep",
+      "category": "ui",
+      "signature": "Host.ConfirmStep(message[, stepInfo])"
+    },
+    {
+      "name": "ShowProgress",
+      "category": "ui",
+      "signature": "Host.ShowProgress(current, total[, message])"
+    },
+    {
+      "name": "HideProgress",
+      "category": "ui",
+      "signature": "Host.HideProgress()"
+    },
+    {
+      "name": "Notify",
+      "category": "ui",
+      "signature": "Host.Notify(message[, type])"
+    },
+    {
+      "name": "StoreState",
+      "category": "state",
+      "signature": "Host.StoreState(key, value)"
+    },
+    {
+      "name": "GetState",
+      "category": "state",
+      "signature": "Host.GetState(key)"
+    },
+    {
+      "name": "ClearState",
+      "category": "state",
+      "signature": "Host.ClearState()"
+    },
+    {
+      "name": "HasState",
+      "category": "state",
+      "signature": "Host.HasState(key)"
+    },
+    {
+      "name": "StartWorkflow",
+      "category": "workflow",
+      "signature": "Host.StartWorkflow([workflowId], [totalSteps])"
+    },
+    {
+      "name": "NextStep",
+      "category": "workflow",
+      "signature": "Host.NextStep()"
+    },
+    {
+      "name": "EndWorkflow",
+      "category": "workflow",
+      "signature": "Host.EndWorkflow()"
+    },
+    {
+      "name": "GetCurrentStep",
+      "category": "workflow",
+      "signature": "Host.GetCurrentStep()"
+    },
+    {
+      "name": "IsWorkflowActive",
+      "category": "workflow",
+      "signature": "Host.IsWorkflowActive()"
+    },
+    {
+      "name": "GetAppType",
+      "category": "env",
+      "signature": "Host.GetAppType()"
+    },
+    {
+      "name": "GetSelection",
+      "category": "env",
+      "signature": "Host.GetSelection()"
+    },
+    {
+      "name": "Log",
+      "category": "env",
+      "signature": "Host.Log(message)"
+    },
+    {
+      "name": "ReadClipboard",
+      "category": "clipboard",
+      "signature": "Host.ReadClipboard()"
+    },
+    {
+      "name": "WriteClipboard",
+      "category": "clipboard",
+      "signature": "Host.WriteClipboard(text)"
+    },
+    {
+      "name": "ResolveLogPath",
+      "category": "logging",
+      "signature": "Host.ResolveLogPath(defaultName)"
+    },
+    {
+      "name": "GetApplication",
+      "category": "env",
+      "signature": "Host.GetApplication()"
+    },
+    {
+      "name": "GetDocument",
+      "category": "env",
+      "signature": "Host.GetDocument()"
+    },
+    {
+      "name": "GetActiveDocument",
+      "category": "env",
+      "signature": "Host.GetActiveDocument()"
+    },
+    {
+      "name": "GetSelectionObject",
+      "category": "env",
+      "signature": "Host.GetSelectionObject()"
+    },
+    {
+      "name": "GetDocumentPath",
+      "category": "env",
+      "signature": "Host.GetDocumentPath()"
+    },
+    {
+      "name": "GetDocumentName",
+      "category": "env",
+      "signature": "Host.GetDocumentName()"
+    },
+    {
+      "name": "ResolveOutputPath",
+      "category": "file",
+      "signature": "Host.ResolveOutputPath(defaultName)"
+    },
+    {
+      "name": "WriteLog",
+      "category": "logging",
+      "signature": "Host.WriteLog(message)"
+    },
+    {
+      "name": "EnumerateFiles",
+      "category": "file",
+      "signature": "Host.EnumerateFiles(folderPath[, pattern][, recursive])"
+    },
+    {
+      "name": "ReadTextFile",
+      "category": "file",
+      "signature": "Host.ReadTextFile(path[, maxChars])"
+    },
+    {
+      "name": "WriteTextFile",
+      "category": "file",
+      "signature": "Host.WriteTextFile(path, text[, overwrite])"
+    },
+    {
+      "name": "ReplaceText",
+      "category": "text",
+      "signature": "Host.ReplaceText(text, findText, replaceText[, ignoreCase][, replaceAll])"
+    },
+    {
+      "name": "ExtractRange",
+      "category": "office",
+      "signature": "Host.ExtractRange([target])"
+    },
+    {
+      "name": "WriteRange",
+      "category": "office",
+      "signature": "Host.WriteRange(text[, target])"
+    },
+    {
+      "name": "CopyFile",
+      "category": "file",
+      "signature": "Host.CopyFile(sourcePath, destPath[, overwrite])"
+    },
+    {
+      "name": "InspectTextFileEncoding",
+      "category": "file",
+      "signature": "Host.InspectTextFileEncoding(path)"
+    },
+    {
+      "name": "BeginWritePlan",
+      "category": "transaction",
+      "signature": "Host.BeginWritePlan([planId])"
+    },
+    {
+      "name": "RecordWrite",
+      "category": "transaction",
+      "signature": "Host.RecordWrite(actionId, paramsJson[, executorKind][, rollbackActionId][, rollbackParamsJson][, capabilityId])"
+    },
+    {
+      "name": "PreviewWritePlan",
+      "category": "transaction",
+      "signature": "Host.PreviewWritePlan()"
+    },
+    {
+      "name": "CommitWritePlan",
+      "category": "transaction",
+      "signature": "Host.CommitWritePlan([planId])"
+    },
+    {
+      "name": "RollbackWritePlan",
+      "category": "transaction",
+      "signature": "Host.RollbackWritePlan([planId])"
+    },
+    {
+      "name": "CreateBackup",
+      "category": "transaction",
+      "signature": "Host.CreateBackup([label])"
+    },
+    {
+      "name": "GetLastWritePlan",
+      "category": "transaction",
+      "signature": "Host.GetLastWritePlan()"
+    },
+    {
+      "name": "GetWritePlanStatus",
+      "category": "transaction",
+      "signature": "Host.GetWritePlanStatus([planId])"
+    },
+    {
+      "name": "ValidateWritePlan",
+      "category": "transaction",
+      "signature": "Host.ValidateWritePlan([planId][, requireRollback])"
+    },
+    {
+      "name": "ExecutePlanJson",
+      "category": "transaction",
+      "signature": "Host.ExecutePlanJson(planJson)"
+    },
+    {
+      "name": "GetDocumentInfo",
+      "category": "env",
+      "signature": "Host.GetDocumentInfo()"
+    },
+    {
+      "name": "GetSelectionInfo",
+      "category": "env",
+      "signature": "Host.GetSelectionInfo()"
+    },
+    {
+      "name": "PathExists",
+      "category": "file",
+      "signature": "Host.PathExists(path)"
+    },
+    {
+      "name": "GetFileInfo",
+      "category": "file",
+      "signature": "Host.GetFileInfo(path)"
+    },
+    {
+      "name": "CreateFolder",
+      "category": "file",
+      "signature": "Host.CreateFolder(path)"
+    },
+    {
+      "name": "ResolveTempPath",
+      "category": "file",
+      "signature": "Host.ResolveTempPath(defaultName)"
+    },
+    {
+      "name": "GetHostInfo",
+      "category": "env",
+      "signature": "Host.GetHostInfo()"
+    },
+    {
+      "name": "ListHostMethods",
+      "category": "env",
+      "signature": "Host.ListHostMethods()"
+    },
+    {
+      "name": "ListCapabilities",
+      "category": "env",
+      "signature": "Host.ListCapabilities()"
+    },
+    {
+      "name": "GetContextInfo",
+      "category": "env",
+      "signature": "Host.GetContextInfo()"
+    },
+    {
+      "name": "GetExcelContextInfo",
+      "category": "env",
+      "signature": "Host.GetExcelContextInfo()"
+    },
+    {
+      "name": "GetWordContextInfo",
+      "category": "env",
+      "signature": "Host.GetWordContextInfo()"
+    },
+    {
+      "name": "GetPptContextInfo",
+      "category": "env",
+      "signature": "Host.GetPptContextInfo()"
+    },
+    {
+      "name": "ResolveOutputPlan",
+      "category": "file",
+      "signature": "Host.ResolveOutputPlan(defaultName[, overwritePolicy])"
+    },
+    {
+      "name": "NormalizePath",
+      "category": "file",
+      "signature": "Host.NormalizePath(path)"
+    },
+    {
+      "name": "CombinePath",
+      "category": "file",
+      "signature": "Host.CombinePath(folder, name)"
+    },
+    {
+      "name": "GetPathParts",
+      "category": "file",
+      "signature": "Host.GetPathParts(path)"
+    },
+    {
+      "name": "SanitizeFileName",
+      "category": "file",
+      "signature": "Host.SanitizeFileName(name[, fallback])"
+    },
+    {
+      "name": "EnsureFileExtension",
+      "category": "file",
+      "signature": "Host.EnsureFileExtension(path, extension)"
+    },
+    {
+      "name": "GetKnownFolderPath",
+      "category": "file",
+      "signature": "Host.GetKnownFolderPath(folderName)"
+    },
+    {
+      "name": "JsonEscape",
+      "category": "text",
+      "signature": "Host.JsonEscape(text)"
+    },
+    {
+      "name": "JsonQuote",
+      "category": "text",
+      "signature": "Host.JsonQuote(text)"
+    },
+    {
+      "name": "CsvEscape",
+      "category": "text",
+      "signature": "Host.CsvEscape(text)"
+    },
+    {
+      "name": "NormalizeLineEndings",
+      "category": "text",
+      "signature": "Host.NormalizeLineEndings(text[, mode])"
+    },
+    {
+      "name": "CountTextLines",
+      "category": "text",
+      "signature": "Host.CountTextLines(text)"
+    },
+    {
+      "name": "LimitText",
+      "category": "text",
+      "signature": "Host.LimitText(text, maxChars[, suffix])"
+    },
+    {
+      "name": "GetTextWorkloadPlan",
+      "category": "text",
+      "signature": "Host.GetTextWorkloadPlan(text[, maxChars][, chunkChars][, overlapChars])"
+    },
+    {
+      "name": "GetEnvironmentVariable",
+      "category": "env",
+      "signature": "Host.GetEnvironmentVariable(name)"
+    },
+    {
+      "name": "ExpandEnvironmentStrings",
+      "category": "env",
+      "signature": "Host.ExpandEnvironmentStrings(text)"
+    },
+    {
+      "name": "GetExportPlan",
+      "category": "file",
+      "signature": "Host.GetExportPlan([format][, defaultName][, overwritePolicy])"
+    },
+    {
+      "name": "GetFileOperationPlan",
+      "category": "file",
+      "signature": "Host.GetFileOperationPlan(operation, path[, destPath][, overwritePolicy])"
+    },
+    {
+      "name": "GetBatchPlan",
+      "category": "planning",
+      "signature": "Host.GetBatchPlan(itemCount[, batchSize][, maxItems][, operationName])"
+    },
+    {
+      "name": "GetBatchFailureJson",
+      "category": "planning",
+      "signature": "Host.GetBatchFailureJson(index, itemId, message[, code][, detail])"
+    },
+    {
+      "name": "GetRunBudgetPlan",
+      "category": "planning",
+      "signature": "Host.GetRunBudgetPlan(taskName[, estimatedItems][, maxItems][, estimatedSeconds][, maxSeconds])"
+    },
+    {
+      "name": "GetRunPreflightPlan",
+      "category": "planning",
+      "signature": "Host.GetRunPreflightPlan([requiredApp][, requireDocument][, requireSelection][, requireSaved])"
+    },
+    {
+      "name": "GetWorkbookName",
+      "category": "env",
+      "signature": "Host.GetWorkbookName()"
+    },
+    {
+      "name": "GetSheetName",
+      "category": "env",
+      "signature": "Host.GetSheetName()"
+    },
+    {
+      "name": "GetAddress",
+      "category": "env",
+      "signature": "Host.GetAddress()"
+    },
+    {
+      "name": "GetCellValue",
+      "category": "env",
+      "signature": "Host.GetCellValue()"
+    },
+    {
+      "name": "GetCellText",
+      "category": "env",
+      "signature": "Host.GetCellText()"
+    },
+    {
+      "name": "GetRangeShape",
+      "category": "env",
+      "signature": "Host.GetRangeShape()"
+    },
+    {
+      "name": "IsTableRange",
+      "category": "env",
+      "signature": "Host.IsTableRange()"
+    },
+    {
+      "name": "HasFormula",
+      "category": "env",
+      "signature": "Host.HasFormula()"
+    },
+    {
+      "name": "HasBlank",
+      "category": "env",
+      "signature": "Host.HasBlank()"
+    },
+    {
+      "name": "GetTypeStats",
+      "category": "env",
+      "signature": "Host.GetTypeStats()"
+    },
+    {
+      "name": "GetHeaders",
+      "category": "env",
+      "signature": "Host.GetHeaders()"
+    },
+    {
+      "name": "GetRangeSummary",
+      "category": "env",
+      "signature": "Host.GetRangeSummary()"
+    },
+    {
+      "name": "GetExcelFormulaIssueSummary",
+      "category": "env",
+      "signature": "Host.GetExcelFormulaIssueSummary()"
+    },
+    {
+      "name": "GetWordSummary",
+      "category": "env",
+      "signature": "Host.GetWordSummary()"
+    },
+    {
+      "name": "GetWordSelectionSummary",
+      "category": "env",
+      "signature": "Host.GetWordSelectionSummary()"
+    },
+    {
+      "name": "GetWordTableSummary",
+      "category": "env",
+      "signature": "Host.GetWordTableSummary()"
+    },
+    {
+      "name": "GetWordReviewSummary",
+      "category": "env",
+      "signature": "Host.GetWordReviewSummary()"
+    },
+    {
+      "name": "GetWordFormatIssueSummary",
+      "category": "env",
+      "signature": "Host.GetWordFormatIssueSummary()"
+    },
+    {
+      "name": "GetPptSummary",
+      "category": "env",
+      "signature": "Host.GetPptSummary()"
+    },
+    {
+      "name": "GetPptSlideSummary",
+      "category": "env",
+      "signature": "Host.GetPptSlideSummary()"
+    },
+    {
+      "name": "GetPptSelectionSummary",
+      "category": "env",
+      "signature": "Host.GetPptSelectionSummary()"
+    },
+    {
+      "name": "GetPptLayoutIssueSummary",
+      "category": "env",
+      "signature": "Host.GetPptLayoutIssueSummary()"
+    },
+    {
+      "name": "RegisterTrigger",
+      "category": "trigger",
+      "signature": "Host.RegisterTrigger(triggerName[, workflowId][, optionsJson])"
+    },
+    {
+      "name": "UnregisterTrigger",
+      "category": "trigger",
+      "signature": "Host.UnregisterTrigger(triggerName)"
+    },
+    {
+      "name": "ListTriggers",
+      "category": "trigger",
+      "signature": "Host.ListTriggers()"
+    },
+    {
+      "name": "EmitTrigger",
+      "category": "trigger",
+      "signature": "Host.EmitTrigger(triggerName[, payloadJson])"
+    },
+    {
+      "name": "ScheduleTask",
+      "category": "scheduler",
+      "signature": "Host.ScheduleTask(taskId, intervalSeconds[, workflowId][, payloadJson])"
+    },
+    {
+      "name": "CancelScheduledTask",
+      "category": "scheduler",
+      "signature": "Host.CancelScheduledTask(taskId)"
+    },
+    {
+      "name": "ListScheduledTasks",
+      "category": "scheduler",
+      "signature": "Host.ListScheduledTasks()"
+    },
+    {
+      "name": "PollTriggers",
+      "category": "trigger",
+      "signature": "Host.PollTriggers()"
+    }
+  ]
+}

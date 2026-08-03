@@ -1,0 +1,247 @@
+{
+  "$schema": "../workflow-schema.json",
+  "workflow": {
+    "id": "advanced_data_processing_001",
+    "name": "高级数据处理工作流",
+    "version": "1.0.0",
+    "description": "展示条件判断、循环处理和异常处理的复杂工作流",
+    "created": "2024-01-15T09:00:00Z",
+    "author": "示例用户",
+    "tags": ["数据处理", "条件判断", "循环", "异常处理"],
+    
+    "segments": [
+      {
+        "id": "input_001",
+        "type": "input",
+        "name": "用户输入配置",
+        "template_id": "user_prompt",
+        "description": "收集用户配置信息",
+        "parameters": {
+          "variable_name": "userConfig",
+          "prompt_text": "请输入处理模式 (1=快速, 2=完整):",
+          "default_value": "1",
+          "validation_type": "numeric"
+        },
+        "position": {"x": 100, "y": 100},
+        "next": ["control_001"]
+      },
+      
+      {
+        "id": "control_001",
+        "type": "control",
+        "name": "判断处理模式",
+        "template_id": "if_condition",
+        "description": "根据用户选择决定处理路径",
+        "parameters": {
+          "condition": "{{userConfig}} = 1",
+          "true_branch": ["process_001"],
+          "false_branch": ["process_002"]
+        },
+        "dependencies": ["input_001"],
+        "position": {"x": 300, "y": 100},
+        "next": ["process_001", "process_002"]
+      },
+      
+      {
+        "id": "process_001",
+        "type": "process",
+        "name": "快速处理模式",
+        "template_id": "text_replace",
+        "description": "使用简单的文本替换",
+        "parameters": {
+          "find_pattern": "{{searchTerm}}",
+          "replace_with": "{{replaceTerm}}",
+          "case_sensitive": false
+        },
+        "dependencies": ["control_001"],
+        "position": {"x": 500, "y": 50},
+        "next": ["control_003"]
+      },
+      
+      {
+        "id": "process_002",
+        "type": "process",
+        "name": "完整处理模式",
+        "template_id": "data_validate",
+        "description": "包含数据验证的完整处理",
+        "parameters": {
+          "validation_rules": [
+            {"field": "data", "type": "not_empty"},
+            {"field": "data", "type": "length", "min": 1, "max": 1000}
+          ],
+          "on_error": "log_and_continue"
+        },
+        "dependencies": ["control_001"],
+        "position": {"x": 500, "y": 150},
+        "next": ["control_002"]
+      },
+      
+      {
+        "id": "control_002",
+        "type": "control",
+        "name": "循环处理数据项",
+        "template_id": "for_loop",
+        "description": "遍历所有数据项",
+        "parameters": {
+          "collection": "{{dataItems}}",
+          "iterator_name": "item",
+          "index_name": "idx",
+          "body": ["process_003"]
+        },
+        "dependencies": ["process_002"],
+        "position": {"x": 700, "y": 150},
+        "next": ["process_003"]
+      },
+      
+      {
+        "id": "process_003",
+        "type": "process",
+        "name": "处理单个数据项",
+        "template_id": "string_format",
+        "description": "格式化数据项",
+        "parameters": {
+          "format_string": "Item {{@index}}: {{item}}",
+          "output_variable": "formattedItem"
+        },
+        "dependencies": ["control_002"],
+        "position": {"x": 900, "y": 150},
+        "next": ["control_003"]
+      },
+      
+      {
+        "id": "control_003",
+        "type": "control",
+        "name": "异常处理包装",
+        "template_id": "try_catch",
+        "description": "捕获并处理可能的错误",
+        "parameters": {
+          "try_block": ["output_001"],
+          "catch_block": ["output_002"],
+          "error_variable": "lastError"
+        },
+        "dependencies": ["process_001", "process_003"],
+        "position": {"x": 1100, "y": 100},
+        "next": ["output_001", "output_002"]
+      },
+      
+      {
+        "id": "output_001",
+        "type": "output",
+        "name": "保存成功结果",
+        "template_id": "csv_export",
+        "description": "导出处理结果为 CSV",
+        "parameters": {
+          "output_file": "results_{{timestamp}}.csv",
+          "columns": ["index", "original", "processed"],
+          "include_header": true
+        },
+        "dependencies": ["control_003"],
+        "position": {"x": 1300, "y": 50},
+        "next": ["log_001"]
+      },
+      
+      {
+        "id": "output_002",
+        "type": "output",
+        "name": "记录错误信息",
+        "template_id": "log_write",
+        "description": "记录处理过程中的错误",
+        "parameters": {
+          "log_file": "error_{{timestamp}}.log",
+          "log_level": "error",
+          "message": "处理失败: {{lastError}}"
+        },
+        "dependencies": ["control_003"],
+        "position": {"x": 1300, "y": 150},
+        "next": ["log_001"]
+      },
+      
+      {
+        "id": "log_001",
+        "type": "output",
+        "name": "生成处理报告",
+        "template_id": "report_generate",
+        "description": "生成包含统计信息的最终报告",
+        "parameters": {
+          "report_file": "report_{{timestamp}}.html",
+          "template": "summary_report",
+          "data": {
+            "total_items": "{{processedCount}}",
+            "success_count": "{{successCount}}",
+            "error_count": "{{errorCount}}",
+            "mode": "{{userConfig}}"
+          }
+        },
+        "dependencies": ["output_001", "output_002"],
+        "position": {"x": 1500, "y": 100},
+        "next": []
+      }
+    ],
+    
+    "variables": {
+      "userConfig": {
+        "type": "string",
+        "value": "1",
+        "description": "用户选择的处理模式"
+      },
+      "searchTerm": {
+        "type": "string",
+        "value": "old",
+        "description": "要查找的文本"
+      },
+      "replaceTerm": {
+        "type": "string",
+        "value": "new",
+        "description": "替换后的文本"
+      },
+      "dataItems": {
+        "type": "array",
+        "value": [],
+        "description": "待处理的数据项列表"
+      },
+      "processedCount": {
+        "type": "integer",
+        "value": 0,
+        "description": "已处理项数"
+      },
+      "successCount": {
+        "type": "integer",
+        "value": 0,
+        "description": "成功处理项数"
+      },
+      "errorCount": {
+        "type": "integer",
+        "value": 0,
+        "description": "错误项数"
+      },
+      "lastError": {
+        "type": "string",
+        "value": "",
+        "description": "最后一个错误信息"
+      },
+      "timestamp": {
+        "type": "string",
+        "value": "",
+        "description": "当前时间戳"
+      }
+    },
+    
+    "metadata": {
+      "category": "数据处理",
+      "difficulty": "高级",
+      "estimated_time": "10-15分钟",
+      "requirements": [
+        "Windows Script Host",
+        "文件系统访问权限",
+        "CSV 处理能力"
+      ],
+      "features": [
+        "条件分支",
+        "循环处理",
+        "异常处理",
+        "多种输出格式"
+      ],
+      "notes": "此工作流展示了如何组合使用各种控制结构实现复杂的数据处理逻辑"
+    }
+  }
+}

@@ -1,0 +1,18 @@
+﻿{
+  "profileVersion": "0.1.0",
+  "id": "report.user_template",
+  "domain": "report",
+  "displayName": "报告（用户模板档案）",
+  "status": "draft",
+  "source": { "kind": "user_template", "label": "待由用户选择的报告样本", "version": "待确认", "authority": "用户或所属机构", "confirmedByUser": false },
+  "applicableDocumentTypes": ["user_selected_report"],
+  "formatRules": {
+    "title": { "mode": "sample_derived", "fields": ["font", "size", "alignment", "spacing"], "required": true },
+    "heading": { "mode": "sample_derived", "fields": ["level", "font", "size", "spacing", "indent"], "required": true },
+    "body": { "mode": "sample_derived", "fields": ["font", "size", "alignment", "lineSpacing", "indent"], "required": true },
+    "table": { "mode": "sample_derived", "fields": ["font", "alignment", "borders"], "required": false },
+    "page": { "mode": "sample_derived", "fields": ["paper", "margins", "orientation"], "required": false },
+    "headerFooter": { "mode": "sample_derived", "fields": ["font", "alignment", "spacing"], "required": false }
+  },
+  "guardrails": { "preserveBusinessContent": true, "requiresPreview": true, "requiresConfirmation": true, "prohibitedOperations": ["不要生成或修改报告结论", "不要复制样本业务数据", "不要覆盖附件和引用内容"] }
+}

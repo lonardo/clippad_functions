@@ -1,0 +1,126 @@
+{
+  "$schema": "schemas/workflow-schema.json",
+  "workflow": {
+    "id": "wf-segmented-001",
+    "name": "分段依赖示例：剪贴板 → 替换 → 剪贴板+文件",
+    "version": "1.0.0",
+    "description": "多阶段数据处理：从剪贴板读取文本，执行文本替换，同时写回剪贴板并写入文件；演示分段依赖与剪贴板集成模板的使用",
+    "created": "2025-12-30T04:55:00Z",
+    "segments": [
+      {
+        "id": "select_ref",
+        "type": "input",
+        "name": "选择参考文件（用于输出命名）",
+        "template": "file_select",
+        "parameters": {
+          "Title": "选择用于命名输出的参考文件（不读取其内容）",
+          "Filter": "All Files|*.*"
+        },
+        "position": { "x": 80, "y": 100 },
+        "next": ["clip_read","replace_cfg","clip_write_cfg","file_write_cfg","glue_execute"]
+      },
+      {
+        "id": "clip_read",
+        "type": "integration",
+        "name": "从剪贴板读取文本",
+        "template": "clipboard_read",
+        "parameters": {},
+        "dependencies": ["select_ref"],
+        "position": { "x": 320, "y": 100 },
+        "next": ["replace_cfg","glue_execute"]
+      },
+      {
+        "id": "replace_cfg",
+        "type": "process",
+        "name": "配置文本替换",
+        "template": "text_replace",
+        "parameters": {
+          "find_pattern": "color",
+          "replace_with": "colour",
+          "UseRegex": false,
+          "GlobalReplace": true,
+          "IgnoreCase": true,
+          "MatchWholeWord": true
+        },
+        "dependencies": ["clip_read"],
+        "position": { "x": 560, "y": 80 },
+        "next": ["clip_write_cfg","file_write_cfg","glue_execute"]
+      },
+      {
+        "id": "clip_write_cfg",
+        "type": "integration",
+        "name": "配置剪贴板写入（函数形式调用）",
+        "template": "clipboard_write",
+        "parameters": {
+          "Text": "示例占位（实际运行由代码传入 processed 文本）"
+        },
+        "dependencies": ["replace_cfg"],
+        "position": { "x": 560, "y": 160 },
+        "next": ["glue_execute"]
+      },
+      {
+        "id": "file_write_cfg",
+        "type": "output",
+        "name": "配置文件写出",
+        "template": "file_write",
+        "parameters": {
+          "output_folder": "output/segmented",
+          "filename_suffix": "_from_clipboard",
+          "EnsureFolder": true,
+          "Encoding": "Unicode",
+          "Overwrite": true,
+          "RetryCount": 3,
+          "RetryDelay": 500
+        },
+        "dependencies": ["replace_cfg"],
+        "position": { "x": 560, "y": 240 },
+        "next": ["glue_execute"]
+      },
+      {
+        "id": "glue_execute",
+        "type": "control",
+        "name": "执行分段组装逻辑（读取→替换→写回剪贴板+文件）",
+        "template": "conditional",
+        "parameters": {
+          "Condition": "True",
+          "TrueAction": "Dim src: src = ReadClipboardText()\nDim processed: processed = TransformContent(src)\nCall WriteClipboardText(processed)\nDim ref: ref = SelectFile()\nIf Len(ref) = 0 Then ref = \"clipboard_input.txt\"\nCall WriteOutput(ref, processed)\n__condResult = processed",
+          "FalseAction": ""
+        },
+        "dependencies": ["select_ref","clip_read","replace_cfg","clip_write_cfg","file_write_cfg"],
+        "position": { "x": 860, "y": 140 },
+        "next": []
+      }
+    ],
+    "variables": {
+      "processed": ""
+    },
+    "metadata": {
+      "author": "示例",
+      "tags": ["分段依赖","剪贴板","文本处理","输出到文件"],
+      "doc": {
+        "purpose": "演示将多个模板按依赖顺序组合：从剪贴板读取文本，经文本替换后，结果同时写回剪贴板并写入文件。",
+        "templates_used": ["file_select","clipboard_read","text_replace","clipboard_write","file_write","conditional"],
+        "step_details": [
+          "1) 选择参考文件（仅用于确定输出文件名的基名与扩展名；不读取内容）。",
+          "2) 从系统剪贴板读取原始文本（ReadClipboardText）。",
+          "3) 使用配置的文本替换规则进行转换（TransformContent）。",
+          "4) 将转换结果写回剪贴板（WriteClipboardText）。",
+          "5) 将结果写入文件（WriteOutput），输出目录为 output/segmented，文件名追加 _from_clipboard 后缀。"
+        ],
+        "run": [
+          "cscript //nologo scripts\\tests\\smoke_workflow_generate_compat.vbs workflows\\examples\\segmented_workflow.json"
+        ],
+        "verify": [
+          "复制一段包含单词 color 的文本到剪贴板，运行工作流后：",
+          "A) 再次粘贴应能看到 color → colour 的替换结果；",
+          "B) 在 output/segmented 目录下生成文件（以所选参考文件为基名，追加 _from_clipboard 后缀），内容为替换后的文本。"
+        ],
+        "notes": [
+          "如未选择参考文件，将默认使用 clipboard_input.txt 作为命名基准。",
+          "如果剪贴板为空，WriteClipboardText 仍会写入 processed（可能为空字符串）。",
+          "Encoding=Unicode 确保输出文件为 UTF-16LE 编码。"
+        ]
+      }
+    }
+  }
+}

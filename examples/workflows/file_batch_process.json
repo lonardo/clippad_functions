@@ -1,0 +1,58 @@
+{
+  "$schema": "schemas/workflow-schema.json",
+  "workflow": {
+    "id": "wf-file-batch-001",
+    "name": "文件批处理工作流",
+    "version": "1.0.0",
+    "description": "批量处理文件的工作流程",
+    "created": "2025-12-29T12:27:00Z",
+    "segments": [
+      {
+        "id": "input_001",
+        "type": "file_input",
+        "name": "选择输入文件夹",
+        "template": "file_folder_input",
+        "parameters": {
+          "path_variable": "inputFolder",
+          "filter": "*.txt",
+          "recursive": true
+        },
+        "position": {"x": 100, "y": 100},
+        "next": ["process_001"]
+      },
+      {
+        "id": "process_001",
+        "type": "text_transform",
+        "name": "文本转换",
+        "template": "text_replace",
+        "parameters": {
+          "find_pattern": "oldtext",
+          "replace_with": "newtext",
+          "case_sensitive": false
+        },
+        "dependencies": ["input_001"],
+        "next": ["output_001"]
+      },
+      {
+        "id": "output_001",
+        "type": "file_output",
+        "name": "保存结果",
+        "template": "file_write",
+        "parameters": {
+          "output_folder": "{{inputFolder}}_processed",
+          "filename_suffix": "_converted"
+        },
+        "dependencies": ["process_001"],
+        "next": []
+      }
+    ],
+    "variables": {
+      "inputFolder": "",
+      "processedCount": 0
+    },
+    "metadata": {
+      "author": "用户名",
+      "tags": ["文件处理", "文本转换"]
+    }
+  }
+}
