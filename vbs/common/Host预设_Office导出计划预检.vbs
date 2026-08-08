@@ -1,10 +1,19 @@
 ﻿' 函数名: HostOfficeExportPlanPreflight
-' 描述: 用人话汇总当前 Office 文档的 PDF 导出预检计划；只读诊断，本版不真正导出
+' 描述: 预检当前 Office 文档 PDF 导出计划，一键确认后按 avoid 策略真实导出；可改预览
 ' 适用应用: Word|Excel|PowerPoint
-' 搜索范围: 全局
-' 搜索对象: 无
+' 作用范围: 全部
+' 需要参数: 否
+'
+' 实现约束（给后续维护/模型使用）：
+' - 先汇总 Host 导出预检（路径/canRun/canExport/体量），默认动作为“预览”；只有明确输入“导出”才会写入 PDF。
+' - 真导出走各应用 ExportAsFixedFormat，路径来自 Host.GetExportPlan(..., "avoid")，不覆盖已有同名 PDF。
+' - 写计划只记录/展示 Host 元数据；RollbackWritePlan 不能撤销已生成的 PDF 文件。
 
 Option Explicit
+
+Const wdExportFormatPDF = 17
+Const xlTypePDF = 0
+Const ppSaveAsPDF = 32
 
 Function Main()
     On Error Resume Next
@@ -40,13 +49,13 @@ Function HostOfficeExportPlanPreflight(appObj)
     canExport = ExtractJsonBoolean(exportJson, "canExport")
     If Not JsonHasKey(exportJson, "canExport") Then canExport = True
     exportPath = ExtractJsonString(exportJson, "path")
-    If Len(exportPath) = 0 Then exportPath = "(未返回路径)"
+    If Len(exportPath) = 0 Then exportPath = "(未解析路径)"
     sizeHint = BuildSizeHint(appObj, appType)
     docName = DetectDocName(appObj, appType)
     riskNotes = BuildRiskNotes(hasPath, canRun, canExport, overwritePolicy)
 
-    Dim report
-    report = "Office 导出计划预检（只读 / 本版不真正导出）" & vbCrLf & _
+    Dim previewText, planId, planPreview, confirmRaw, doExport
+    previewText = "Office 导出计划预检（尚未导出）" & vbCrLf & _
         "应用类型: " & appType & vbCrLf & _
         "文档名称: " & docName & vbCrLf & _
         "是否已保存路径: " & YesNoLabel(hasPath) & vbCrLf & _
@@ -57,19 +66,144 @@ Function HostOfficeExportPlanPreflight(appObj)
         "运行预检 canRun: " & YesNoLabel(canRun) & vbCrLf & _
         "导出预检 canExport: " & YesNoLabel(canExport) & vbCrLf & _
         "风险与建议: " & riskNotes & vbCrLf & _
-        "说明: 本版只做人话预检与计划汇总，不调用 ExportAsFixedFormat，不写回文档。" & vbCrLf & _
+        "默认动作=预览（源文档和文件均不改）" & vbCrLf & _
         "Host.GetHostInfo: " & hostInfo & vbCrLf & _
         "Host.GetDocumentInfo: " & docInfo & vbCrLf & _
         "Host.GetContextInfo: " & contextInfo & vbCrLf & _
         "Host.GetRunPreflightPlan: " & preflightJson & vbCrLf & _
-        "Host.GetExportPlan: " & exportJson
+        "Host.GetExportPlan: " & exportJson & vbCrLf & vbCrLf & _
+        "确认导出：请输入 导出。" & vbCrLf & _
+        "仅预览：直接确认或输入 预览" & vbCrLf & _
+        "覆盖写法：导出 | 预览"
 
-    Host.WriteClipboard report
-    SafeWriteLog report
+    planId = SafeBeginWritePlan()
+    SafeRecordWrite "office_export_plan", "{""format"":""pdf"",""path"":""" & EscapeJson(exportPath) & """,""policy"":""" & EscapeJson(overwritePolicy) & """}", "office.export.pdf"
+    planPreview = SafePreviewWritePlan()
+    CloseWritePlan planId
 
-    HostOfficeExportPlanPreflight = "{""ok"":true,""readonly"":true,""appType"":""" & EscapeJson(appType) & """,""hasPath"":" & LCase(CStr(hasPath)) & _
-        ",""canRun"":" & LCase(CStr(canRun)) & ",""canExport"":" & LCase(CStr(canExport)) & _
-        ",""exportPath"":""" & EscapeJson(exportPath) & """,""message"":""" & EscapeJson(report) & """}"
+    confirmRaw = SafePrompt(previewText, "预览")
+    doExport = False
+    If Not ParseExportConfirm(confirmRaw, doExport) Then
+        HostOfficeExportPlanPreflight = FailureJson("E_CONFIRM_REQUIRED", "未确认导出/预览，已取消")
+        Exit Function
+    End If
+
+    If Not doExport Then
+        Host.WriteClipboard previewText
+        SafeWriteLog previewText
+        HostOfficeExportPlanPreflight = "{""ok"":true,""readonly"":true,""appType"":""" & EscapeJson(appType) & """,""hasPath"":" & LCase(CStr(hasPath)) & _
+            ",""canRun"":" & LCase(CStr(canRun)) & ",""canExport"":" & LCase(CStr(canExport)) & _
+            ",""exportPath"":""" & EscapeJson(exportPath) & """,""message"":""" & EscapeJson(previewText) & """}"
+        Exit Function
+    End If
+
+    If TypeName(appObj) = "Empty" Or TypeName(appObj) = "Nothing" Then
+        HostOfficeExportPlanPreflight = FailureJson("E_NO_APP", "未取得 Office 应用，无法导出")
+        Exit Function
+    End If
+    If Not canExport Or Len(Trim(exportPath)) = 0 Or Left(exportPath, 1) = "(" Then
+        HostOfficeExportPlanPreflight = FailureJson("E_EXPORT_PATH", "导出路径不可用：" & exportPath)
+        Exit Function
+    End If
+    If Not hasPath Then
+        HostOfficeExportPlanPreflight = FailureJson("E_DOC_NOT_SAVED", "当前文档尚未保存到磁盘，请先保存后再导出")
+        Exit Function
+    End If
+
+    planId = SafeBeginWritePlan()
+    SafeRecordWrite "office_export_pdf", "{""path"":""" & EscapeJson(exportPath) & """,""appType"":""" & EscapeJson(appType) & """}", "office.export.pdf"
+    planPreview = SafePreviewWritePlan()
+
+    Dim exportError
+    exportError = ""
+    If Not ExportPdfByApp(appObj, appType, exportPath, exportError) Then
+        CloseWritePlan planId
+        HostOfficeExportPlanPreflight = FailureJson("E_EXPORT_FAILED", "PDF 导出失败：" & exportError)
+        Exit Function
+    End If
+    CloseWritePlan planId
+
+    Dim summary
+    summary = "Office PDF 导出完成；应用=" & appType & "，文档=" & docName & "，路径=" & exportPath & _
+        "，源文档内容未改" & vbCrLf & "Preview: " & planPreview
+    Host.WriteClipboard summary
+    SafeWriteLog summary
+    HostOfficeExportPlanPreflight = "{""ok"":true,""exported"":true,""sourceUnchanged"":true,""appType"":""" & EscapeJson(appType) & _
+        """,""exportPath"":""" & EscapeJson(exportPath) & """,""writePlanPreview"":""" & EscapeJson(planPreview) & _
+        """,""message"":""" & EscapeJson(summary) & """}"
+End Function
+
+Function ParseExportConfirm(rawText, ByRef doExport)
+    Dim text, parts, head
+    doExport = False
+    text = Trim(CStr(rawText))
+    If Len(text) = 0 Then
+        ParseExportConfirm = False
+        Exit Function
+    End If
+    If InStr(1, text, "|", vbBinaryCompare) > 0 Then
+        parts = Split(text, "|")
+        head = Trim(CStr(parts(0)))
+    Else
+        head = text
+    End If
+
+    If StrComp(head, "导出", vbTextCompare) = 0 Or StrComp(head, "export", vbTextCompare) = 0 Then
+        doExport = True
+        ParseExportConfirm = True
+    ElseIf StrComp(head, "预览", vbTextCompare) = 0 Or StrComp(head, "preview", vbTextCompare) = 0 Then
+        doExport = False
+        ParseExportConfirm = True
+    Else
+        ParseExportConfirm = False
+    End If
+End Function
+
+Function ExportPdfByApp(appObj, appType, exportPath, ByRef exportError)
+    On Error Resume Next
+    Dim docObj
+    exportError = ""
+    ExportPdfByApp = False
+
+    If StrComp(appType, "Word", vbTextCompare) = 0 Then
+        Set docObj = appObj.ActiveDocument
+        If Err.Number <> 0 Or TypeName(docObj) = "Empty" Or TypeName(docObj) = "Nothing" Then
+            exportError = "无活动 Word 文档"
+            Err.Clear
+            Exit Function
+        End If
+        Err.Clear
+        docObj.ExportAsFixedFormat exportPath, wdExportFormatPDF, False, 0, 0, 1, 1, 0, True, True, 1, True, True, False
+    ElseIf StrComp(appType, "Excel", vbTextCompare) = 0 Then
+        Set docObj = appObj.ActiveWorkbook
+        If Err.Number <> 0 Or TypeName(docObj) = "Empty" Or TypeName(docObj) = "Nothing" Then
+            exportError = "无活动 Excel 工作簿"
+            Err.Clear
+            Exit Function
+        End If
+        Err.Clear
+        docObj.ExportAsFixedFormat xlTypePDF, exportPath, 0, 0, False, True, False
+    ElseIf StrComp(appType, "PowerPoint", vbTextCompare) = 0 Then
+        Set docObj = appObj.ActivePresentation
+        If Err.Number <> 0 Or TypeName(docObj) = "Empty" Or TypeName(docObj) = "Nothing" Then
+            exportError = "无活动 PowerPoint 演示文稿"
+            Err.Clear
+            Exit Function
+        End If
+        Err.Clear
+        docObj.ExportAsFixedFormat exportPath, ppSaveAsPDF, 2, 0, 0, 0, 0, 0, False, True, 1, False, True, False
+    Else
+        exportError = "暂不支持的应用类型：" & appType
+        Exit Function
+    End If
+
+    If Err.Number <> 0 Then
+        exportError = Err.Description
+        Err.Clear
+        ExportPdfByApp = False
+    Else
+        ExportPdfByApp = True
+    End If
 End Function
 
 Function SafeExportPlan(defaultName, overwritePolicy)
@@ -153,7 +287,7 @@ Function DetectDocName(appObj, appType)
 
     If Err.Number <> 0 Or Len(Trim(nameText)) = 0 Then
         Err.Clear
-        DetectDocName = "(未命名/不可用)"
+        DetectDocName = "(未命名/不可读)"
     Else
         DetectDocName = nameText
     End If
@@ -192,17 +326,17 @@ Function BuildSizeHint(appObj, appType)
     End If
 
     If BuildSizeHint = "未知" Then
-        BuildSizeHint = "未能估计体量（可先保存后再预检）"
+        BuildSizeHint = "未能估算体量（请结合导出预检）"
     End If
 End Function
 
 Function BuildRiskNotes(hasPath, canRun, canExport, overwritePolicy)
     Dim notes
     notes = ""
-    If Not hasPath Then notes = notes & "当前文档可能未保存到磁盘；正式导出前建议先保存。"
+    If Not hasPath Then notes = notes & "当前文档可能未保存到磁盘，正式导出前建议先保存。"
     If Not canRun Then
         If Len(notes) > 0 Then notes = notes & " "
-        notes = notes & "运行预检 canRun=否，请检查是否有活动文档/权限。"
+        notes = notes & "运行预检 canRun=否，检查是否有活动文档/权限。"
     End If
     If Not canExport Then
         If Len(notes) > 0 Then notes = notes & " "
@@ -212,7 +346,7 @@ Function BuildRiskNotes(hasPath, canRun, canExport, overwritePolicy)
         If Len(notes) > 0 Then notes = notes & " "
         notes = notes & "默认避免覆盖同名 PDF。"
     End If
-    If Len(notes) = 0 Then notes = "暂无明显阻断项；本版仍只预检不导出。"
+    If Len(notes) = 0 Then notes = "预检未见明显阻断项；确认后将生成外部 PDF。"
     BuildRiskNotes = notes
 End Function
 
@@ -316,7 +450,7 @@ Function SafePreviewWritePlan()
     Err.Clear
 End Function
 
-Sub SafeRollbackWritePlan(planId)
+Sub CloseWritePlan(planId)
     On Error Resume Next
     Host.RollbackWritePlan planId
     Err.Clear
@@ -327,12 +461,6 @@ Sub SafeWriteLog(message)
     Host.WriteLog message
     Err.Clear
 End Sub
-
-Function ParseYes(text)
-    Dim t
-    t = UCase(Trim(CStr(text)))
-    ParseYes = (t = "是" Or t = "Y" Or t = "YES" Or t = "TRUE" Or t = "1")
-End Function
 
 Function YesNoLabel(flag)
     If flag Then
