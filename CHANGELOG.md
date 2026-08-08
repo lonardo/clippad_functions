@@ -1,5 +1,11 @@
 # Changelog
 
+## community-v0.1.3 - 2026-08-08
+
+- 同步 `Host预设_Office导出计划预检.vbs` 为源仓库人话只读预检版（不改公开脚本数量，仍为 105 + 2 示例）。
+- 明确 TablePipeline / 表管道样例暂不进入公开包：当前 bootstrap 仍依赖 `CreateObject`/`FileSystemObject`/`ADODB.Stream`，不符合 Host-first 公开安全边界。
+- 校正公开文档中的分类计数与版本审计备注。
+
 ## community-v0.1.2 - 2026-08-07
 
 - 同步主包中的 105 个 Host-first VBS 公共脚本，修正公共包与安装包脚本内容漂移。
