@@ -1,17 +1,17 @@
 {
   "schemaVersion": 1,
   "kind": "officeaddin_public_export",
-  "exportId": "community-v0.1.4",
-  "exportDate": "2026-08-08",
+  "exportId": "community-v0.1.5",
+  "exportDate": "2026-08-13",
   "license": "Apache-2.0",
   "officeSupport": "Office 2010 and newer (tested)",
   "included": {
     "vbs": {
       "common": 11,
-      "word": 26,
-      "excel": 44,
-      "powerpoint": 29,
-      "total": 110
+      "word": 35,
+      "excel": 53,
+      "powerpoint": 32,
+      "total": 131
     },
     "workflowExamples": 4,
     "hostMethods": 116,

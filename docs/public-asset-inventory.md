@@ -6,7 +6,7 @@
 
 | 资产 | 状态 | 说明 |
 |---|---|---|
-| VBA Script/Host预设_*.vbs | 已公开导出 | 110 个 Host-first 预设，已完成 Host 方法、安全 API 和 BOM 检查 |
+| VBA Script/Host预设_*.vbs | 已公开导出 | 131 个 Host-first 预设，已完成 Host 方法、安全 API 和 BOM 检查 |
 | Plugin/WorkflowHostMethodList.inl | 只生成结果 | 只公开 host-api-v1.json，不公开 C++ 源文件 |
 | workflows/examples 中的安全 JSON | 已公开导出 | 当前保留 4 个；移除了嵌入旧式 CreateObject/ADODB.Stream 的两个示例 |
 | schemas/workflow-schema.json | 已公开导出 | 通用工作流结构契约 |

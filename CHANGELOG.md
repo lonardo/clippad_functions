@@ -1,5 +1,10 @@
 # Changelog
 
+## community-v0.1.5 - 2026-08-13
+
+- 同步正式客户端 1.0.0.1008 安装包中的全部 Host-first 预设脚本，使公开包与最新已发布载荷一致。
+- 新增 19 个 Host-first 预设（Excel 7 / Word 9 / PowerPoint 3），并更新 3 个 Excel 场景包内容。
+- 更新导出清单与分类计数（VBS=131，含示例共 133）。
 ## community-v0.1.4 - 2026-08-08
 
 - 同步 5 个经审核的 Host-first 场景预设：Excel 唯一值提取/分组序号、Word 目录题注与交付隐私清理、PowerPoint 图片资产清单。

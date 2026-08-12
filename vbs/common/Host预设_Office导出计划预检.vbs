@@ -1,6 +1,8 @@
 ﻿' 函数名: HostOfficeExportPlanPreflight
 ' 描述: 预检当前 Office 文档 PDF 导出计划，一键确认后按 avoid 策略真实导出；可改预览
 ' 适用应用: Word|Excel|PowerPoint
+' 搜索范围: 全文
+' 搜索对象: 无
 ' 作用范围: 全部
 ' 需要参数: 否
 '

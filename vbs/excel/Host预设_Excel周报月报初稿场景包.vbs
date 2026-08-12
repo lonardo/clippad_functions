@@ -1,813 +1,486 @@
-﻿' 函数名: HostExcelFilterDeliveryPack
-
-' 描述: 筛选交付场景包：支持内置预设/上次/命名规则复用与 1-3 条件 AND/OR；预览命中后生成筛选副本（含_来源行）与处理摘要，不改源表
-
+﻿' 函数名: HostExcelReportDraftPack
+' 描述: 周报/月报初稿场景包：按当前数据区自动汇总事实指标、异常待办候选，并生成含重点说明/下期计划占位的初稿与处理摘要，不改源表
 ' 适用应用: Excel
-
-' 搜索范围: 当前范围
-
+' 搜索范围: 全文
 ' 搜索对象: 无
-
-' 作用范围: 当前范围
-
+' 作用范围: 全文
 ' 输出类型: 表
 
 Option Explicit
 
 Function Main()
-
     On Error Resume Next
-
     Dim appObj
-
     Set appObj = Host.GetApplication()
-
     If Err.Number <> 0 Or TypeName(appObj) = "Empty" Or TypeName(appObj) = "Nothing" Then
-
         Err.Clear
-
         Main = FailureJson("E_NO_EXCEL_APP", "未取得 Excel 应用，请在 Excel 中运行该预设")
-
         Exit Function
-
     End If
-
-    Main = HostExcelFilterDeliveryPack(appObj)
-
+    Main = HostExcelReportDraftPack(appObj)
 End Function
 
-Function HostExcelFilterDeliveryPack(appObj)
+Function HostExcelReportDraftPack(appObj)
     On Error Resume Next
     Dim sourceRange, sourceSheet, sourceName, outputMode
     Set sourceRange = appObj.Selection.CurrentRegion
     If Err.Number <> 0 Or TypeName(sourceRange) = "Empty" Or TypeName(sourceRange) = "Nothing" Then
         Err.Clear
-        HostExcelFilterDeliveryPack = FailureJson("E_NO_RANGE", "请先选中带表头的数据区域")
+        HostExcelReportDraftPack = FailureJson("E_NO_RANGE", "请先选中带表头的数据区域")
         Exit Function
     End If
     If sourceRange.Rows.Count < 2 Then
-        HostExcelFilterDeliveryPack = FailureJson("E_RANGE_TOO_SMALL", "当前区域至少需要一行表头和一行数据")
+        HostExcelReportDraftPack = FailureJson("E_RANGE_TOO_SMALL", "当前区域至少需要一行表头和一行数据")
         Exit Function
     End If
     Set sourceSheet = sourceRange.Worksheet
     sourceName = sourceSheet.Name
+
+    Dim reportType, reportTitle, amountField, statusField, ownerField, dateField
+    reportType = NormalizeReportType(SafePrompt("报表类型：周报 或 月报（默认 周报）", "周报"))
+    reportTitle = Trim(SafePrompt("报表标题", sourceName & "_" & reportType & "初稿"))
+    If Len(reportTitle) = 0 Then reportTitle = sourceName & "_" & reportType & "初稿"
+    amountField = Trim(SafePrompt("金额字段（可空）", GuessHeaderByKeywords(sourceRange, "金额,销售额,回款,应收,费用,数量")))
+    statusField = Trim(SafePrompt("状态字段（可空）", GuessHeaderByKeywords(sourceRange, "状态,进度,完成情况")))
+    ownerField = Trim(SafePrompt("负责人字段（可空）", GuessHeaderByKeywords(sourceRange, "负责人,处理人,跟进人,责任人,销售")))
+    dateField = Trim(SafePrompt("日期字段（可空）", GuessHeaderByKeywords(sourceRange, "日期,截止日期,到期日,业务日期,完成日期")))
     outputMode = NormalizeOutputMode(SafePrompt("输出模式：NewSheet 或 NewWorkbook（默认 NewSheet）", "NewSheet"))
 
-    Dim presetChoice, ruleLoaded, ruleText, ruleNameUsed, ruleSummary
-    ruleLoaded = False
-    ruleNameUsed = "手动输入"
-    ruleSummary = ""
-    presetChoice = Trim(SafePrompt("规则来源：内置预设 / 上次 / 命名规则 / 手动（默认 内置预设）", "内置预设"))
-
-    Dim logicText, logicCode
-    Dim fields(3), keywords(3), modes(3), columns(3)
-    Dim condCount, idx, defaultField
-    condCount = 0
-    defaultField = CStr(sourceRange.Cells(1, 1).Text)
-
-    If StrComp(presetChoice, "上次", vbTextCompare) = 0 Or LCase(presetChoice) = "last" Then
-        ruleText = ReadTextFile(RuleFilePath("filter", "last"))
-        If Len(Trim(ruleText)) > 0 Then
-            ruleLoaded = ApplyFilterRuleText(ruleText, sourceRange, logicCode, fields, keywords, modes, columns, condCount)
-            If ruleLoaded Then
-                ruleNameUsed = "上次"
-                ruleSummary = BuildConditionSummary(fields, keywords, modes, condCount, logicCode)
-            End If
-        End If
-        If Not ruleLoaded Then
-            HostExcelFilterDeliveryPack = FailureJson("E_RULE_LOAD", "未找到可用的上次筛选规则，请改用内置预设或手动")
-            Exit Function
-        End If
-    ElseIf StrComp(presetChoice, "命名规则", vbTextCompare) = 0 Or StrComp(presetChoice, "命名", vbTextCompare) = 0 Then
-        Dim named
-        named = PromptNamedRuleName("filter")
-        If Len(named) = 0 Then
-            HostExcelFilterDeliveryPack = FailureJson("E_RULE_NAME", "未提供命名规则名称")
-            Exit Function
-        End If
-        ruleText = ReadTextFile(RuleFilePath("filter", named))
-        If Len(Trim(ruleText)) = 0 Then
-            HostExcelFilterDeliveryPack = FailureJson("E_RULE_LOAD", "未找到命名筛选规则：" & named)
-            Exit Function
-        End If
-        ruleLoaded = ApplyFilterRuleText(ruleText, sourceRange, logicCode, fields, keywords, modes, columns, condCount)
-        If Not ruleLoaded Then
-            HostExcelFilterDeliveryPack = FailureJson("E_RULE_LOAD", "命名筛选规则无效：" & named)
-            Exit Function
-        End If
-        ruleNameUsed = named
-        ruleSummary = BuildConditionSummary(fields, keywords, modes, condCount, logicCode)
-    ElseIf StrComp(presetChoice, "手动", vbTextCompare) = 0 Or LCase(presetChoice) = "manual" Then
-                logicText = Trim(SafePrompt("条件关系：AND 或 OR（表头：" & BuildHeaderHint(sourceRange) & "）", "AND"))
-        logicCode = NormalizeLogic(logicText)
-        For idx = 1 To 3
-            fields(idx) = Trim(SafePrompt("条件" & CStr(idx) & " 字段名（留空结束）（表头：" & BuildHeaderHint(sourceRange) & "）", IIf(idx = 1, defaultField, "")))
-            If Len(fields(idx)) = 0 Then Exit For
-            columns(idx) = FindHeaderColumn(sourceRange, fields(idx))
-            If columns(idx) <= 0 Then
-                HostExcelFilterDeliveryPack = FailureJson("E_FIELD_NOT_FOUND", "未找到筛选字段：" & fields(idx))
-                Exit Function
-            End If
-            keywords(idx) = SafePrompt("条件" & CStr(idx) & " 关键词（日期可用 TODAY；数值比较配合匹配方式）", "")
-            modes(idx) = NormalizeMatchMode(SafePrompt("条件" & CStr(idx) & " 匹配方式：精确/包含/不等于/大于/小于/大于等于/小于等于/日期早于/日期晚于", "精确"))
-            condCount = condCount + 1
-        Next
-        If condCount = 0 Then
-            HostExcelFilterDeliveryPack = FailureJson("E_NO_CONDITION", "至少需要 1 个筛选条件")
-            Exit Function
-        End If
-        ruleNameUsed = "手动输入"
-        ruleSummary = BuildConditionSummary(fields, keywords, modes, condCount, logicCode)
-    Else
-        Dim builtinName, statusField, dateField, amountField, ownerField
-        builtinName = Trim(SafePrompt("内置预设：1本周未完成 / 2待回款 / 3高优先级未完成 / 4逾期未完成（默认 1）", "1"))
-        statusField = GuessHeaderByKeywords(sourceRange, "状态,进度,完成情况,处理状态")
-        dateField = GuessHeaderByKeywords(sourceRange, "截止日期,到期日,到期日期,完成日期,日期,计划完成")
-        amountField = GuessHeaderByKeywords(sourceRange, "金额,回款金额,待回款,未回款,应收")
-        ownerField = GuessHeaderByKeywords(sourceRange, "负责人,处理人,跟进人,责任人")
-        If Len(statusField) = 0 Then statusField = defaultField
-
-        logicCode = "AND"
-        If builtinName = "2" Or InStr(1, builtinName, "回款", vbTextCompare) > 0 Then
-            ruleNameUsed = "待回款"
-            fields(1) = statusField
-            keywords(1) = "待回款"
-            modes(1) = "contains"
-            columns(1) = FindHeaderColumn(sourceRange, fields(1))
-            condCount = 1
-            If columns(1) <= 0 And Len(amountField) > 0 Then
-                fields(1) = amountField
-                keywords(1) = "0"
-                modes(1) = "ne"
-                columns(1) = FindHeaderColumn(sourceRange, fields(1))
-            End If
-            If Len(amountField) > 0 And StrComp(fields(1), amountField, vbTextCompare) <> 0 Then
-                fields(2) = amountField
-                keywords(2) = "0"
-                modes(2) = "gt"
-                columns(2) = FindHeaderColumn(sourceRange, fields(2))
-                If columns(2) > 0 Then condCount = 2
-            End If
-        ElseIf builtinName = "3" Or InStr(1, builtinName, "优先", vbTextCompare) > 0 Then
-            ruleNameUsed = "高优先级未完成"
-            Dim prioField
-            prioField = GuessHeaderByKeywords(sourceRange, "优先级,重要程度,级别,P级")
-            If Len(prioField) = 0 Then prioField = statusField
-            fields(1) = prioField
-            keywords(1) = "高"
-            modes(1) = "contains"
-            columns(1) = FindHeaderColumn(sourceRange, fields(1))
-            fields(2) = statusField
-            keywords(2) = "已完成"
-            modes(2) = "ne"
-            columns(2) = FindHeaderColumn(sourceRange, fields(2))
-            condCount = 0
-            If columns(1) > 0 Then condCount = condCount + 1 Else fields(1) = ""
-            If columns(2) > 0 Then
-                If condCount = 0 Then
-                    fields(1) = fields(2): keywords(1) = keywords(2): modes(1) = modes(2): columns(1) = columns(2)
-                End If
-                condCount = condCount + 1
-            End If
-        ElseIf builtinName = "4" Or InStr(1, builtinName, "逾期", vbTextCompare) > 0 Then
-            ruleNameUsed = "逾期未完成"
-            fields(1) = statusField
-            keywords(1) = "已完成"
-            modes(1) = "ne"
-            columns(1) = FindHeaderColumn(sourceRange, fields(1))
-            condCount = 0
-            If columns(1) > 0 Then condCount = 1
-            If Len(dateField) > 0 Then
-                fields(condCount + 1) = dateField
-                keywords(condCount + 1) = "TODAY"
-                modes(condCount + 1) = "date_lt"
-                columns(condCount + 1) = FindHeaderColumn(sourceRange, fields(condCount + 1))
-                If columns(condCount + 1) > 0 Then condCount = condCount + 1
-            End If
-        Else
-            ruleNameUsed = "本周未完成"
-            fields(1) = statusField
-            keywords(1) = "已完成"
-            modes(1) = "ne"
-            columns(1) = FindHeaderColumn(sourceRange, fields(1))
-            condCount = 0
-            If columns(1) > 0 Then condCount = 1
-            If Len(ownerField) > 0 And condCount < 3 Then
-                fields(condCount + 1) = ownerField
-                keywords(condCount + 1) = ""
-                modes(condCount + 1) = "ne"
-                columns(condCount + 1) = FindHeaderColumn(sourceRange, fields(condCount + 1))
-                If columns(condCount + 1) > 0 Then condCount = condCount + 1
-            End If
-        End If
-
-        If condCount = 0 Then
-            HostExcelFilterDeliveryPack = FailureJson("E_PRESET_FIELDS", "内置预设未能匹配到可用字段，请改用手动或检查表头")
-            Exit Function
-        End If
-        ' allow user override after preset
-        Dim confirmPreset
-        ruleSummary = BuildConditionSummary(fields, keywords, modes, condCount, logicCode)
-        confirmPreset = Trim(SafePrompt("将使用预设【" & ruleNameUsed & "】：" & ruleSummary & "。回车沿用，或输入“手动”改写", ""))
-        If StrComp(confirmPreset, "手动", vbTextCompare) = 0 Then
-            logicText = Trim(SafePrompt("条件关系：AND 或 OR", logicCode))
-            logicCode = NormalizeLogic(logicText)
-            condCount = 0
-            For idx = 1 To 3
-                fields(idx) = Trim(SafePrompt("条件" & CStr(idx) & " 字段名（留空结束）（表头：" & BuildHeaderHint(sourceRange) & "）", IIf(idx = 1, fields(1), "")))
-                If Len(fields(idx)) = 0 Then Exit For
-                columns(idx) = FindHeaderColumn(sourceRange, fields(idx))
-                If columns(idx) <= 0 Then
-                    HostExcelFilterDeliveryPack = FailureJson("E_FIELD_NOT_FOUND", "未找到筛选字段：" & fields(idx))
-                    Exit Function
-                End If
-                keywords(idx) = SafePrompt("条件" & CStr(idx) & " 关键词（日期可用 TODAY；数值比较配合匹配方式）", keywords(idx))
-                modes(idx) = NormalizeMatchMode(SafePrompt("条件" & CStr(idx) & " 匹配方式：精确/包含/不等于/大于/小于/大于等于/小于等于/日期早于/日期晚于", modes(idx)))
-                condCount = condCount + 1
-            Next
-            ruleNameUsed = "手动输入"
-            ruleSummary = BuildConditionSummary(fields, keywords, modes, condCount, logicCode)
-        End If
-    End If
-
-    If ruleLoaded Then
-        ruleSummary = BuildConditionSummary(fields, keywords, modes, condCount, logicCode)
-        If PromptRuleOverride(ruleNameUsed & "：" & ruleSummary) Then
-            logicText = Trim(SafePrompt("条件关系：AND 或 OR（表头：" & BuildHeaderHint(sourceRange) & "）", logicCode))
-            logicCode = NormalizeLogic(logicText)
-            condCount = 0
-            For idx = 1 To 3
-                fields(idx) = Trim(SafePrompt("条件" & CStr(idx) & " 字段名（留空结束）（表头：" & BuildHeaderHint(sourceRange) & "）", IIf(idx = 1, fields(1), "")))
-                If Len(fields(idx)) = 0 Then Exit For
-                columns(idx) = FindHeaderColumn(sourceRange, fields(idx))
-                If columns(idx) <= 0 Then
-                    HostExcelFilterDeliveryPack = FailureJson("E_FIELD_NOT_FOUND", "未找到筛选字段：" & fields(idx))
-                    Exit Function
-                End If
-                keywords(idx) = SafePrompt("条件" & CStr(idx) & " 关键词（日期可用 TODAY；数值比较配合匹配方式）", keywords(idx))
-                modes(idx) = NormalizeMatchMode(SafePrompt("条件" & CStr(idx) & " 匹配方式：精确/包含/不等于/大于/小于/大于等于/小于等于/日期早于/日期晚于", modes(idx)))
-                condCount = condCount + 1
-            Next
-            ruleNameUsed = "手动输入"
-            ruleSummary = BuildConditionSummary(fields, keywords, modes, condCount, logicCode)
-        End If
-    End If
-
-    If condCount = 0 Then
-        HostExcelFilterDeliveryPack = FailureJson("E_NO_CONDITION", "至少需要 1 个筛选条件")
+    Dim amountCol, statusCol, ownerCol, dateCol, dataRows
+    amountCol = 0: statusCol = 0: ownerCol = 0: dateCol = 0
+    If Len(amountField) > 0 Then amountCol = FindHeaderColumn(sourceRange, amountField)
+    If Len(statusField) > 0 Then statusCol = FindHeaderColumn(sourceRange, statusField)
+    If Len(ownerField) > 0 Then ownerCol = FindHeaderColumn(sourceRange, ownerField)
+    If Len(dateField) > 0 Then dateCol = FindHeaderColumn(sourceRange, dateField)
+    If Len(amountField) > 0 And amountCol <= 0 Then
+        HostExcelReportDraftPack = FailureJson("E_FIELD_NOT_FOUND", "未找到金额字段：" & amountField)
         Exit Function
     End If
-    ruleSummary = BuildConditionSummary(fields, keywords, modes, condCount, logicCode)
+    If Len(statusField) > 0 And statusCol <= 0 Then
+        HostExcelReportDraftPack = FailureJson("E_FIELD_NOT_FOUND", "未找到状态字段：" & statusField)
+        Exit Function
+    End If
+    If Len(ownerField) > 0 And ownerCol <= 0 Then
+        HostExcelReportDraftPack = FailureJson("E_FIELD_NOT_FOUND", "未找到负责人字段：" & ownerField)
+        Exit Function
+    End If
+    If Len(dateField) > 0 And dateCol <= 0 Then
+        HostExcelReportDraftPack = FailureJson("E_FIELD_NOT_FOUND", "未找到日期字段：" & dateField)
+        Exit Function
+    End If
 
-    Dim rowIndex, matchCount
-    matchCount = 0
-    For rowIndex = 2 To sourceRange.Rows.Count
-        If RowMatchesConditions(sourceRange, rowIndex, columns, keywords, modes, condCount, logicCode) Then matchCount = matchCount + 1
+    dataRows = sourceRange.Rows.Count - 1
+    Dim amountSum, amountCount, amountAvg, openCount, doneCount, overdueCount
+    Dim ownerNames(), ownerCounts(), ownerAmount(), ownerN
+    Dim anomalyLines, anomalyCount, sampleOwners
+    Dim r, text, val, ownerName, i, found, normalized
+    amountSum = 0: amountCount = 0: amountAvg = 0
+    openCount = 0: doneCount = 0: overdueCount = 0
+    ownerN = 0
+    anomalyLines = "": anomalyCount = 0: sampleOwners = ""
+
+    For r = 2 To sourceRange.Rows.Count
+        If amountCol > 0 Then
+            text = NormalizeCellText(sourceRange.Cells(r, amountCol).Text)
+            If Len(text) > 0 And IsNumeric(text) Then
+                val = CDbl(text)
+                amountSum = amountSum + val
+                amountCount = amountCount + 1
+            End If
+        End If
+
+        Dim statusText, isDone, isOpen
+        statusText = ""
+        isDone = False
+        isOpen = False
+        If statusCol > 0 Then
+            statusText = NormalizeCellText(sourceRange.Cells(r, statusCol).Text)
+            If InStr(1, statusText, "完成", vbTextCompare) > 0 Or InStr(1, statusText, "关闭", vbTextCompare) > 0 Or InStr(1, statusText, "已回款", vbTextCompare) > 0 Then
+                isDone = True
+                doneCount = doneCount + 1
+            Else
+                isOpen = True
+                openCount = openCount + 1
+            End If
+        End If
+
+        Dim isOverdue
+        isOverdue = False
+        If dateCol > 0 Then
+            text = NormalizeCellText(sourceRange.Cells(r, dateCol).Text)
+            If TryNormalizeDateText(text, normalized) Then
+                If CDate(normalized) < Date Then
+                    If statusCol <= 0 Or isOpen Then
+                        isOverdue = True
+                        overdueCount = overdueCount + 1
+                    End If
+                End If
+            End If
+        End If
+
+        If ownerCol > 0 Then
+            ownerName = NormalizeCellText(sourceRange.Cells(r, ownerCol).Text)
+            If Len(ownerName) = 0 Then ownerName = "(空)"
+            found = False
+            For i = 0 To ownerN - 1
+                If StrComp(ownerNames(i), ownerName, vbTextCompare) = 0 Then
+                    ownerCounts(i) = ownerCounts(i) + 1
+                    If amountCol > 0 Then
+                        text = NormalizeCellText(sourceRange.Cells(r, amountCol).Text)
+                        If Len(text) > 0 And IsNumeric(text) Then ownerAmount(i) = ownerAmount(i) + CDbl(text)
+                    End If
+                    found = True
+                    Exit For
+                End If
+            Next
+            If Not found Then
+                ReDim Preserve ownerNames(ownerN)
+                ReDim Preserve ownerCounts(ownerN)
+                ReDim Preserve ownerAmount(ownerN)
+                ownerNames(ownerN) = ownerName
+                ownerCounts(ownerN) = 1
+                ownerAmount(ownerN) = 0
+                If amountCol > 0 Then
+                    text = NormalizeCellText(sourceRange.Cells(r, amountCol).Text)
+                    If Len(text) > 0 And IsNumeric(text) Then ownerAmount(ownerN) = CDbl(text)
+                End If
+                ownerN = ownerN + 1
+            End If
+        End If
+
+        If anomalyCount < 12 Then
+            If isOverdue Or (statusCol > 0 And isOpen And InStr(1, statusText, "高", vbTextCompare) > 0) Or (statusCol > 0 And isOpen And InStr(1, statusText, "风险", vbTextCompare) > 0) Then
+                If Len(anomalyLines) > 0 Then anomalyLines = anomalyLines & vbCrLf
+                anomalyLines = anomalyLines & "行" & CStr(sourceRange.Row + r - 1)
+                If ownerCol > 0 Then anomalyLines = anomalyLines & " / " & NormalizeCellText(sourceRange.Cells(r, ownerCol).Text)
+                If statusCol > 0 Then anomalyLines = anomalyLines & " / 状态=" & statusText
+                If dateCol > 0 Then anomalyLines = anomalyLines & " / 日期=" & NormalizeCellText(sourceRange.Cells(r, dateCol).Text)
+                If amountCol > 0 Then anomalyLines = anomalyLines & " / 金额=" & NormalizeCellText(sourceRange.Cells(r, amountCol).Text)
+                anomalyCount = anomalyCount + 1
+            End If
+        End If
+    Next
+
+    If amountCount > 0 Then amountAvg = amountSum / amountCount
+
+    ' top owners sample
+    Dim a, b, tmpName, tmpCount, tmpAmt
+    If ownerN > 1 Then
+        For a = 0 To ownerN - 2
+            For b = a + 1 To ownerN - 1
+                If ownerCounts(b) > ownerCounts(a) Then
+                    tmpName = ownerNames(a): ownerNames(a) = ownerNames(b): ownerNames(b) = tmpName
+                    tmpCount = ownerCounts(a): ownerCounts(a) = ownerCounts(b): ownerCounts(b) = tmpCount
+                    tmpAmt = ownerAmount(a): ownerAmount(a) = ownerAmount(b): ownerAmount(b) = tmpAmt
+                End If
+            Next
+        Next
+    End If
+    For i = 0 To ownerN - 1
+        If i > 4 Then Exit For
+        If Len(sampleOwners) > 0 Then sampleOwners = sampleOwners & "；"
+        sampleOwners = sampleOwners & ownerNames(i) & "x" & CStr(ownerCounts(i))
+        If amountCol > 0 Then sampleOwners = sampleOwners & "/金额" & CStr(ownerAmount(i))
     Next
 
     Dim previewText, planId, planPreview
-    previewText = "Excel 筛选交付场景包预览（尚未写入）" & vbCrLf & _
-        "命令ID：excel.filter_delivery_pack" & vbCrLf & _
+    previewText = "Excel 周报月报初稿预览（尚未写入）" & vbCrLf & _
+        "命令ID：excel.report_draft_pack" & vbCrLf & _
         "源表=" & sourceName & "；区域=" & sourceRange.Address & vbCrLf & _
-        "输出模式=" & outputMode & vbCrLf & _
-        "规则来源=" & ruleNameUsed & vbCrLf & _
-        "条件=" & ruleSummary & vbCrLf & _
-        "数据行=" & CStr(sourceRange.Rows.Count - 1) & "；命中=" & CStr(matchCount) & vbCrLf & _
-        "将生成：筛选结果（含_来源行） + 处理摘要；sourceUnchanged=true"
+        "类型=" & reportType & "；标题=" & reportTitle & vbCrLf & _
+        "数据行=" & CStr(dataRows) & "；输出模式=" & outputMode & vbCrLf & _
+        "字段：金额=" & amountField & "；状态=" & statusField & "；负责人=" & ownerField & "；日期=" & dateField & vbCrLf & _
+        "指标：金额合计=" & CStr(amountSum) & "；未完成/进行中=" & CStr(openCount) & "；已完成=" & CStr(doneCount) & "；逾期候选=" & CStr(overdueCount) & vbCrLf & _
+        "将生成：报表初稿 + 处理摘要；事实自动填入，结论留给人工；sourceUnchanged=true"
 
     planId = SafeBeginWritePlan()
-    SafeRecordWrite "excel_filter_delivery_pack", "{""source"":""" & EscapeJson(sourceRange.Address) & """,""logic"":""" & EscapeJson(logicCode) & """,""conditions"":" & CStr(condCount) & ",""matches"":" & CStr(matchCount) & ",""rule"":""" & EscapeJson(ruleNameUsed) & """}", "office.excel.filterDeliveryPack"
+    SafeRecordWrite "excel_report_draft_pack", "{""source"":""" & EscapeJson(sourceRange.Address) & """,""type"":""" & EscapeJson(reportType) & """,""rows"":" & CStr(dataRows) & ",""amountSum"":" & CStr(amountSum) & ",""overdue"":" & CStr(overdueCount) & "}", "office.excel.reportDraftPack"
     planPreview = SafePreviewWritePlan()
     SafeRollbackWritePlan planId
 
-    If Not SafeConfirmStep(previewText & vbCrLf & vbCrLf & "确认生成筛选交付结果？", "excel.filter_delivery_pack") Then
-        HostExcelFilterDeliveryPack = FailureJson("E_CONFIRM_REQUIRED", "用户取消或未确认，未修改工作簿")
+    If Not SafeConfirmStep(previewText & vbCrLf & vbCrLf & "确认生成周报/月报初稿？", "excel.report_draft_pack") Then
+        HostExcelReportDraftPack = FailureJson("E_CONFIRM_REQUIRED", "用户取消或未确认，未修改工作簿")
         Exit Function
     End If
 
-    Dim createdSheets(), createdCount, filterSheet, summarySheet, outRows
+    Dim createdSheets(), createdCount, draftSheet, summarySheet
     createdCount = 0
     ReDim createdSheets(4)
-    outRows = 0
-
-    Set filterSheet = CreateOutputSheet(appObj, sourceName, "筛选结果", outputMode)
-    If filterSheet Is Nothing Then
-        HostExcelFilterDeliveryPack = FailureJson("E_OUTPUT_SHEET", "无法创建筛选结果工作表")
+    Set draftSheet = CreateOutputSheet(appObj, sourceName, reportType & "初稿", outputMode)
+    If draftSheet Is Nothing Then
+        HostExcelReportDraftPack = FailureJson("E_OUTPUT_SHEET", "无法创建报表初稿工作表")
         Exit Function
     End If
-    createdCount = createdCount + 1: Set createdSheets(createdCount) = filterSheet
+    createdCount = createdCount + 1: Set createdSheets(createdCount) = draftSheet
 
-    If Not WriteFilteredSheet(sourceRange, columns, keywords, modes, condCount, logicCode, filterSheet, outRows) Then
-        RollbackCreatedSheets appObj, createdSheets, createdCount
-        HostExcelFilterDeliveryPack = FailureJson("E_FILTER_WRITE", "筛选结果写入失败，已删除未完成输出")
-        Exit Function
+    Dim rowOut
+    rowOut = 1
+    draftSheet.Cells(rowOut, 1).Value = reportTitle
+    draftSheet.Cells(rowOut, 1).Font.Bold = True
+    draftSheet.Cells(rowOut, 1).Font.Size = 14
+    rowOut = rowOut + 1
+    draftSheet.Cells(rowOut, 1).Value = "报表类型"
+    draftSheet.Cells(rowOut, 2).Value = reportType
+    rowOut = rowOut + 1
+    draftSheet.Cells(rowOut, 1).Value = "数据来源"
+    draftSheet.Cells(rowOut, 2).Value = sourceName & " " & sourceRange.Address
+    rowOut = rowOut + 1
+    draftSheet.Cells(rowOut, 1).Value = "生成时间"
+    draftSheet.Cells(rowOut, 2).Value = Now
+    rowOut = rowOut + 2
+
+    draftSheet.Cells(rowOut, 1).Value = "一、本期数据摘要"
+    draftSheet.Cells(rowOut, 1).Font.Bold = True
+    rowOut = rowOut + 1
+    draftSheet.Cells(rowOut, 1).Value = "数据行数"
+    draftSheet.Cells(rowOut, 2).Value = dataRows
+    rowOut = rowOut + 1
+    draftSheet.Cells(rowOut, 1).Value = "金额字段"
+    draftSheet.Cells(rowOut, 2).Value = IIf(Len(amountField) > 0, amountField, "（未指定）")
+    rowOut = rowOut + 1
+    draftSheet.Cells(rowOut, 1).Value = "状态字段"
+    draftSheet.Cells(rowOut, 2).Value = IIf(Len(statusField) > 0, statusField, "（未指定）")
+    rowOut = rowOut + 1
+    draftSheet.Cells(rowOut, 1).Value = "负责人字段"
+    draftSheet.Cells(rowOut, 2).Value = IIf(Len(ownerField) > 0, ownerField, "（未指定）")
+    rowOut = rowOut + 1
+    draftSheet.Cells(rowOut, 1).Value = "日期字段"
+    draftSheet.Cells(rowOut, 2).Value = IIf(Len(dateField) > 0, dateField, "（未指定）")
+    rowOut = rowOut + 2
+
+    draftSheet.Cells(rowOut, 1).Value = "二、指标"
+    draftSheet.Cells(rowOut, 1).Font.Bold = True
+    rowOut = rowOut + 1
+    draftSheet.Cells(rowOut, 1).Value = "指标"
+    draftSheet.Cells(rowOut, 2).Value = "数值"
+    draftSheet.Cells(rowOut, 3).Value = "说明"
+    draftSheet.Rows(rowOut).Font.Bold = True
+    rowOut = rowOut + 1
+    draftSheet.Cells(rowOut, 1).Value = "记录数"
+    draftSheet.Cells(rowOut, 2).Value = dataRows
+    draftSheet.Cells(rowOut, 3).Value = "本期数据行"
+    rowOut = rowOut + 1
+    draftSheet.Cells(rowOut, 1).Value = "金额合计"
+    draftSheet.Cells(rowOut, 2).Value = amountSum
+    draftSheet.Cells(rowOut, 3).Value = "有效金额行=" & CStr(amountCount)
+    rowOut = rowOut + 1
+    draftSheet.Cells(rowOut, 1).Value = "金额均值"
+    draftSheet.Cells(rowOut, 2).Value = amountAvg
+    draftSheet.Cells(rowOut, 3).Value = "仅统计数值行"
+    rowOut = rowOut + 1
+    draftSheet.Cells(rowOut, 1).Value = "进行中/未完成"
+    draftSheet.Cells(rowOut, 2).Value = openCount
+    draftSheet.Cells(rowOut, 3).Value = "按状态字段粗分"
+    rowOut = rowOut + 1
+    draftSheet.Cells(rowOut, 1).Value = "已完成"
+    draftSheet.Cells(rowOut, 2).Value = doneCount
+    draftSheet.Cells(rowOut, 3).Value = "按状态字段粗分"
+    rowOut = rowOut + 1
+    draftSheet.Cells(rowOut, 1).Value = "逾期候选"
+    draftSheet.Cells(rowOut, 2).Value = overdueCount
+    draftSheet.Cells(rowOut, 3).Value = "日期早于今天且未判完成"
+    rowOut = rowOut + 2
+
+    draftSheet.Cells(rowOut, 1).Value = "三、异常/待办候选"
+    draftSheet.Cells(rowOut, 1).Font.Bold = True
+    rowOut = rowOut + 1
+    If anomalyCount = 0 Then
+        draftSheet.Cells(rowOut, 1).Value = "未自动识别到明显异常，请人工补充。"
+        rowOut = rowOut + 1
+    Else
+        Dim lines, li
+        lines = Split(anomalyLines, vbCrLf)
+        For li = 0 To UBound(lines)
+            draftSheet.Cells(rowOut, 1).Value = lines(li)
+            rowOut = rowOut + 1
+        Next
     End If
+    rowOut = rowOut + 1
+
+    draftSheet.Cells(rowOut, 1).Value = "四、分组观察（负责人）"
+    draftSheet.Cells(rowOut, 1).Font.Bold = True
+    rowOut = rowOut + 1
+    If ownerN = 0 Then
+        draftSheet.Cells(rowOut, 1).Value = "未指定负责人字段。"
+        rowOut = rowOut + 1
+    Else
+        draftSheet.Cells(rowOut, 1).Value = sampleOwners
+        rowOut = rowOut + 1
+    End If
+    rowOut = rowOut + 1
+
+    draftSheet.Cells(rowOut, 1).Value = "五、重点说明（待人工确认）"
+    draftSheet.Cells(rowOut, 1).Font.Bold = True
+    rowOut = rowOut + 1
+    draftSheet.Cells(rowOut, 1).Value = "1. 请补充本期最重要的进展与结论。"
+    rowOut = rowOut + 1
+    draftSheet.Cells(rowOut, 1).Value = "2. 请核对异常候选是否属实，并标注责任人。"
+    rowOut = rowOut + 1
+    draftSheet.Cells(rowOut, 1).Value = "3. 请补充需要同步给上级/协作方的风险点。"
+    rowOut = rowOut + 2
+
+    draftSheet.Cells(rowOut, 1).Value = "六、下期计划（待人工确认）"
+    draftSheet.Cells(rowOut, 1).Font.Bold = True
+    rowOut = rowOut + 1
+    draftSheet.Cells(rowOut, 1).Value = "1. 目标："
+    rowOut = rowOut + 1
+    draftSheet.Cells(rowOut, 1).Value = "2. 关键动作："
+    rowOut = rowOut + 1
+    draftSheet.Cells(rowOut, 1).Value = "3. 需要支持："
+    rowOut = rowOut + 2
+
+    draftSheet.Cells(rowOut, 1).Value = "说明：本页仅为事实初稿，不替代人工判断；sourceUnchanged=true"
+    draftSheet.Columns.AutoFit
 
     Set summarySheet = CreateOutputSheet(appObj, sourceName, "处理摘要", outputMode)
     If summarySheet Is Nothing Then
         RollbackCreatedSheets appObj, createdSheets, createdCount
-        HostExcelFilterDeliveryPack = FailureJson("E_OUTPUT_SHEET", "无法创建处理摘要工作表")
+        HostExcelReportDraftPack = FailureJson("E_OUTPUT_SHEET", "无法创建处理摘要工作表")
         Exit Function
     End If
     createdCount = createdCount + 1: Set createdSheets(createdCount) = summarySheet
 
-    Dim summaryLines, impactJson, summary, saveBlob
-    summaryLines = "场景名=筛选交付场景包" & vbCrLf & _
-        "命令ID=excel.filter_delivery_pack" & vbCrLf & _
+    Dim summaryLines, impactJson, summary
+    summaryLines = "场景名=周报月报初稿场景包" & vbCrLf & _
+        "命令ID=excel.report_draft_pack" & vbCrLf & _
         "源表名称=" & sourceName & vbCrLf & _
         "源区域=" & sourceRange.Address & vbCrLf & _
         "输出模式=" & outputMode & vbCrLf & _
-        "输出位置=" & filterSheet.Name & "," & summarySheet.Name & vbCrLf & _
-        "处理前行数=" & CStr(sourceRange.Rows.Count - 1) & vbCrLf & _
-        "处理后行数=" & CStr(outRows) & vbCrLf & _
-        "规则来源=" & ruleNameUsed & vbCrLf & _
-        "参数=logic=" & logicCode & ";conditions=" & CStr(condCount) & vbCrLf & _
-        "条件=" & ruleSummary & vbCrLf & _
-        "命中行数=" & CStr(outRows) & vbCrLf & _
+        "输出位置=" & draftSheet.Name & "," & summarySheet.Name & vbCrLf & _
+        "处理前行数=" & CStr(dataRows) & vbCrLf & _
+        "处理后行数=" & CStr(dataRows) & vbCrLf & _
+        "参数=type=" & reportType & ";title=" & reportTitle & ";amount=" & amountField & ";status=" & statusField & ";owner=" & ownerField & ";date=" & dateField & vbCrLf & _
+        "金额合计=" & CStr(amountSum) & vbCrLf & _
+        "进行中=" & CStr(openCount) & vbCrLf & _
+        "已完成=" & CStr(doneCount) & vbCrLf & _
+        "逾期候选=" & CStr(overdueCount) & vbCrLf & _
+        "异常样本数=" & CStr(anomalyCount) & vbCrLf & _
         "执行时间=" & Now & vbCrLf & _
         "结果=成功"
     impactJson = SafeHostText("ExcelWriteImpactSummary", summaryLines, summarySheet.Name)
     If Not ExtractJsonBoolean(impactJson, "ok") Then WriteSummaryFallback summarySheet, summaryLines
 
-    saveBlob = SerializeFilterRule(logicCode, fields, keywords, modes, condCount, ruleNameUsed)
-    MaybeSaveRule "filter", ruleNameUsed, saveBlob
-
-    summary = "Excel 筛选交付完成：输出=" & filterSheet.Name & "；命中=" & CStr(outRows) & "；条件数=" & CStr(condCount) & "；规则=" & ruleNameUsed & "；sourceUnchanged=true"
+    summary = "Excel 报表初稿完成：输出=" & draftSheet.Name & "；类型=" & reportType & "；行=" & CStr(dataRows) & "；逾期候选=" & CStr(overdueCount) & "；sourceUnchanged=true"
     Host.WriteClipboard summary
     SafeWriteLog summary
-
-    HostExcelFilterDeliveryPack = "{""ok"":true,""sourceUnchanged"":true,""commandId"":""excel.filter_delivery_pack"",""outputSheet"":""" & EscapeJson(filterSheet.Name) & """,""summarySheet"":""" & EscapeJson(summarySheet.Name) & """,""matchedRows"":" & CStr(outRows) & ",""conditions"":" & CStr(condCount) & ",""rule"":""" & EscapeJson(ruleNameUsed) & """,""writePlanPreview"":""" & EscapeJson(planPreview) & """,""message"":""" & EscapeJson(summary) & """}"
+    HostExcelReportDraftPack = "{""ok"":true,""sourceUnchanged"":true,""commandId"":""excel.report_draft_pack"",""outputSheet"":""" & EscapeJson(draftSheet.Name) & """,""summarySheet"":""" & EscapeJson(summarySheet.Name) & """,""reportType"":""" & EscapeJson(reportType) & """,""dataRows"":" & CStr(dataRows) & ",""overdueCount"":" & CStr(overdueCount) & ",""writePlanPreview"":""" & EscapeJson(planPreview) & """,""message"":""" & EscapeJson(summary) & """}"
 End Function
 
-Function SerializeFilterRule(logicCode, ByRef fields, ByRef keywords, ByRef modes, condCount, ruleNameUsed)
-    Dim i, buf
-    buf = "version=1" & vbCrLf & "kind=filter" & vbCrLf & "name=" & ruleNameUsed & vbCrLf & "logic=" & logicCode & vbCrLf & "count=" & CStr(condCount)
-    For i = 1 To condCount
-        buf = buf & vbCrLf & "field" & CStr(i) & "=" & fields(i)
-        buf = buf & vbCrLf & "keyword" & CStr(i) & "=" & keywords(i)
-        buf = buf & vbCrLf & "mode" & CStr(i) & "=" & modes(i)
-    Next
-    SerializeFilterRule = buf
-End Function
-
-Function ApplyFilterRuleText(ruleText, sourceRange, ByRef logicCode, ByRef fields, ByRef keywords, ByRef modes, ByRef columns, ByRef condCount)
-    Dim i, n, f, k, m, c
-    ApplyFilterRuleText = False
-    logicCode = NormalizeLogic(ExtractRuleValue(ruleText, "logic"))
-    n = Val(ExtractRuleValue(ruleText, "count"))
-    If n <= 0 Then n = 3
-    If n > 3 Then n = 3
-    condCount = 0
-    For i = 1 To n
-        f = Trim(ExtractRuleValue(ruleText, "field" & CStr(i)))
-        If Len(f) = 0 Then Exit For
-        k = ExtractRuleValue(ruleText, "keyword" & CStr(i))
-        m = NormalizeMatchMode(ExtractRuleValue(ruleText, "mode" & CStr(i)))
-        c = FindHeaderColumn(sourceRange, f)
-        If c <= 0 Then Exit Function
-        condCount = condCount + 1
-        fields(condCount) = f
-        keywords(condCount) = k
-        modes(condCount) = m
-        columns(condCount) = c
-    Next
-    ApplyFilterRuleText = (condCount > 0)
-End Function
-
-Function RowMatchesConditions(sourceRange, rowIndex, ByRef columns, ByRef keywords, ByRef modes, condCount, logicCode)
-
-    Dim i, matched, cellText, oneMatch
-
-    If logicCode = "OR" Then
-
-        matched = False
-
-        For i = 1 To condCount
-
-            cellText = CStr(sourceRange.Cells(rowIndex, columns(i)).Text)
-
-            If IsMatch(cellText, keywords(i), modes(i)) Then
-
-                matched = True
-
-                Exit For
-
-            End If
-
-        Next
-
+Function NormalizeReportType(text)
+    Dim t
+    t = LCase(Trim(CStr(text)))
+    If t = "month" Or t = "monthly" Or t = "月" Or t = "月报" Then
+        NormalizeReportType = "月报"
     Else
-
-        matched = True
-
-        For i = 1 To condCount
-
-            cellText = CStr(sourceRange.Cells(rowIndex, columns(i)).Text)
-
-            oneMatch = IsMatch(cellText, keywords(i), modes(i))
-
-            If Not oneMatch Then
-
-                matched = False
-
-                Exit For
-
-            End If
-
-        Next
-
+        NormalizeReportType = "周报"
     End If
-
-    RowMatchesConditions = matched
-
-End Function
-
-Function BuildConditionSummary(ByRef fields, ByRef keywords, ByRef modes, condCount, logicCode)
-
-    Dim i, buf
-
-    buf = "logic=" & logicCode
-
-    For i = 1 To condCount
-
-        buf = buf & ";[" & CStr(i) & "]" & fields(i) & " " & MatchModeLabel(modes(i)) & " " & keywords(i)
-
-    Next
-
-    BuildConditionSummary = buf
-
-End Function
-
-Function WriteFilteredSheet(sourceRange, ByRef columns, ByRef keywords, ByRef modes, condCount, logicCode, filterSheet, ByRef outRows)
-
-    On Error Resume Next
-
-    Dim c, r, outR, totalCols
-
-    WriteFilteredSheet = False
-
-    totalCols = sourceRange.Columns.Count
-
-    For c = 1 To totalCols
-
-        filterSheet.Cells(1, c).Value = sourceRange.Cells(1, c).Text
-
-    Next
-
-    filterSheet.Cells(1, totalCols + 1).Value = "_来源行"
-
-    outR = 1
-
-    For r = 2 To sourceRange.Rows.Count
-
-        If RowMatchesConditions(sourceRange, r, columns, keywords, modes, condCount, logicCode) Then
-
-            outR = outR + 1
-
-            For c = 1 To totalCols
-
-                filterSheet.Cells(outR, c).Value = sourceRange.Cells(r, c).Value
-
-            Next
-
-            filterSheet.Cells(outR, totalCols + 1).Value = sourceRange.Row + r - 1
-
-        End If
-
-    Next
-
-    outRows = outR - 1
-
-    filterSheet.Rows(1).Font.Bold = True
-
-    filterSheet.Columns.AutoFit
-
-    If Err.Number <> 0 Then
-
-        Err.Clear
-
-        Exit Function
-
-    End If
-
-    WriteFilteredSheet = True
-
 End Function
 
 Function SceneRulesDir()
-
     Dim basePath
-
     On Error Resume Next
-
     basePath = ""
-
     basePath = CStr(Host.GetKnownFolderPath("localappdata"))
-
     If Len(Trim(basePath)) = 0 Then basePath = CStr(Host.GetKnownFolderPath("appdata"))
-
     If Len(Trim(basePath)) = 0 Then basePath = CStr(Host.GetKnownFolderPath("temp"))
-
     If Len(Trim(basePath)) = 0 Then basePath = "."
-
     SceneRulesDir = Host.CombinePath(Host.CombinePath(basePath, "OfficeAddin"), "scene_rules")
-
     Host.CreateFolder SceneRulesDir
-
     Err.Clear
-
 End Function
 
 Function RuleFilePath(kindName, ruleName)
-
     Dim safeName, i, ch, buf, fileName
-
     safeName = LCase(Trim(CStr(ruleName)))
-
     If Len(safeName) = 0 Then safeName = "last"
-
     buf = ""
-
     For i = 1 To Len(safeName)
-
         ch = Mid(safeName, i, 1)
-
         If (ch >= "a" And ch <= "z") Or (ch >= "0" And ch <= "9") Or ch = "_" Or ch = "-" Then
-
             buf = buf & ch
-
         ElseIf AscW(ch) > 127 Then
-
             buf = buf & ch
-
         Else
-
             buf = buf & "_"
-
         End If
-
     Next
-
     If Len(buf) = 0 Then buf = "last"
-
     fileName = CStr(kindName) & "_" & buf & ".txt"
-
     fileName = Host.SanitizeFileName(fileName, "last.txt")
-
     RuleFilePath = Host.CombinePath(SceneRulesDir(), fileName)
-
 End Function
 
 Function ReadTextFile(pathText)
-
     On Error Resume Next
-
     ReadTextFile = ""
-
     If Host.PathExists(CStr(pathText)) Then
-
         ReadTextFile = CStr(Host.ReadTextFile(CStr(pathText)))
-
         If Err.Number <> 0 Then
-
             ReadTextFile = ""
-
             Err.Clear
-
         End If
-
     End If
-
     Err.Clear
-
 End Function
 
 Function WriteTextFile(pathText, contentText)
-
     On Error Resume Next
-
     WriteTextFile = False
-
     WriteTextFile = Host.WriteTextFile(CStr(pathText), CStr(contentText), True)
-
     If Err.Number <> 0 Then
-
         WriteTextFile = False
-
         Err.Clear
-
     End If
-
     Err.Clear
-
 End Function
 Function ExtractRuleValue(text, keyName)
-
     Dim lines, i, lineText, prefix
-
     ExtractRuleValue = ""
-
     prefix = LCase(Trim(CStr(keyName))) & "="
-
     lines = Split(Replace(CStr(text), vbCrLf, vbLf), vbLf)
-
     For i = 0 To UBound(lines)
-
         lineText = Trim(Replace(lines(i), vbCr, ""))
-
         If LCase(Left(lineText, Len(prefix))) = prefix Then
-
             ExtractRuleValue = Mid(lineText, Len(prefix) + 1)
-
             Exit Function
-
         End If
-
     Next
-
 End Function
 
 Function GuessHeaderByKeywords(sourceRange, keywordsCsv)
-
     Dim keys, c, headerText, k
-
     GuessHeaderByKeywords = ""
-
     keys = SplitCsvFields(keywordsCsv)
-
     If Not IsArray(keys) Then Exit Function
-
     On Error Resume Next
-
     If UBound(keys) < 0 Then Exit Function
-
     For c = 1 To sourceRange.Columns.Count
-
         headerText = NormalizeCellText(sourceRange.Cells(1, c).Text)
-
         For k = 0 To UBound(keys)
-
             If Len(keys(k)) > 0 Then
-
                 If InStr(1, headerText, keys(k), vbTextCompare) > 0 Or StrComp(headerText, keys(k), vbTextCompare) = 0 Then
-
                     GuessHeaderByKeywords = CStr(sourceRange.Cells(1, c).Text)
-
                     Exit Function
-
                 End If
-
             End If
-
         Next
-
     Next
-
-    Err.Clear
-
-End Function
-
-Function BuildHeaderHint(sourceRange)
-    Dim c, n, buf, h
-    buf = ""
-    n = 0
-    On Error Resume Next
-    For c = 1 To sourceRange.Columns.Count
-        h = NormalizeCellText(sourceRange.Cells(1, c).Text)
-        If Len(h) > 0 Then
-            If Len(buf) > 0 Then buf = buf & ","
-            buf = buf & h
-            n = n + 1
-            If n >= 12 Then Exit For
-        End If
-    Next
-    If Len(buf) = 0 Then buf = "(无表头)"
-    If sourceRange.Columns.Count > n Then buf = buf & "..."
-    BuildHeaderHint = buf
     Err.Clear
 End Function
-
-Function ListNamedRuleNames(kindName)
-    Dim payload, filesPos, arrayStart, pos, nextPath, nameText, prefix, names, countShown, slashPos
-    ListNamedRuleNames = ""
-    names = ""
-    countShown = 0
-    prefix = LCase(Trim(CStr(kindName))) & "_"
-    On Error Resume Next
-    payload = CStr(Host.EnumerateFiles(SceneRulesDir(), CStr(kindName) & "_*.txt", False))
-    If Err.Number <> 0 Then
-        Err.Clear
-        Exit Function
-    End If
-    filesPos = InStr(1, payload, """files"":[", vbTextCompare)
-    If filesPos <= 0 Then Exit Function
-    arrayStart = InStr(filesPos, payload, "[")
-    If arrayStart <= 0 Then Exit Function
-    pos = arrayStart
-    Do
-        nextPath = ExtractNextJsonString(payload, pos)
-        If Len(nextPath) = 0 Then Exit Do
-        slashPos = InStrRev(nextPath, "\")
-        If slashPos <= 0 Then slashPos = InStrRev(nextPath, "/")
-        If slashPos > 0 Then
-            nameText = Mid(nextPath, slashPos + 1)
-        Else
-            nameText = nextPath
-        End If
-        nameText = LCase(Trim(CStr(nameText)))
-        If Right(nameText, 4) = ".txt" Then nameText = Left(nameText, Len(nameText) - 4)
-        If Left(nameText, Len(prefix)) = prefix Then nameText = Mid(nameText, Len(prefix) + 1)
-        If Len(nameText) > 0 And nameText <> "last" Then
-            If InStr(1, "," & names & ",", "," & nameText & ",", vbTextCompare) = 0 Then
-                If Len(names) > 0 Then names = names & ", "
-                names = names & nameText
-                countShown = countShown + 1
-                If countShown >= 12 Then
-                    names = names & "..."
-                    Exit Do
-                End If
-            End If
-        End If
-    Loop
-    ListNamedRuleNames = names
-    Err.Clear
-End Function
-
-Function ExtractNextJsonString(payload, ByRef pos)
-    Dim startPos, ch, buf, i
-    ExtractNextJsonString = ""
-    startPos = InStr(pos, CStr(payload), Chr(34))
-    If startPos <= 0 Then Exit Function
-    buf = ""
-    i = startPos + 1
-    Do While i <= Len(payload)
-        ch = Mid(payload, i, 1)
-        If ch = "\" Then
-            If i + 1 <= Len(payload) Then
-                buf = buf & Mid(payload, i + 1, 1)
-                i = i + 2
-            Else
-                Exit Do
-            End If
-        ElseIf ch = Chr(34) Then
-            ExtractNextJsonString = buf
-            pos = i + 1
-            Exit Function
-        Else
-            buf = buf & ch
-            i = i + 1
-        End If
-    Loop
-End Function
-
-Function PromptNamedRuleName(kindName)
-    Dim names, hint, ans
-    names = ListNamedRuleNames(kindName)
-    If Len(names) = 0 Then
-        hint = "暂无命名规则，可先手动配置后保存"
-    Else
-        hint = names
-    End If
-    ans = Trim(SafePrompt("命名规则名称（已有：" & hint & "）", ""))
-    PromptNamedRuleName = ans
-End Function
-
-Function PromptRuleOverride(summaryText)
-    Dim ans
-    ans = Trim(SafePrompt("将使用规则" & summaryText & vbCrLf & "回车沿用，输入“手动”可改写", ""))
-    PromptRuleOverride = (StrComp(ans, "手动", vbTextCompare) = 0 Or LCase(ans) = "manual")
-End Function
-
 
 Sub MaybeSaveRule(kindName, defaultName, contentText)
-
     Dim ans, pathText, ok
-
-    Dim existingNames
-    existingNames = ListNamedRuleNames(kindName)
-    If Len(existingNames) = 0 Then existingNames = "无"
-    ans = Trim(SafePrompt("保存规则：否 / 上次 / 输入命名（默认 " & defaultName & "；已有：" & existingNames & "）", "上次"))
-
+    ans = Trim(SafePrompt("保存规则：否 / 上次 / 输入名称（默认 " & defaultName & "）", "上次"))
     If Len(ans) = 0 Then ans = "否"
-
     If StrComp(ans, "否", vbTextCompare) = 0 Or LCase(ans) = "no" Or LCase(ans) = "n" Then Exit Sub
-
     If StrComp(ans, "上次", vbTextCompare) = 0 Or LCase(ans) = "last" Then
-
         pathText = RuleFilePath(kindName, "last")
-
     Else
-
         pathText = RuleFilePath(kindName, ans)
-
     End If
-
     ok = WriteTextFile(pathText, contentText)
-
     WriteTextFile RuleFilePath(kindName, "last"), contentText
-
     If ok Then SafeWriteLog "规则已保存: " & pathText
-
 End Sub
 
 Function IsNothing(value)

@@ -1,15 +1,15 @@
 # VBS Script Library
 
-本目录只收录经过 Host-first 验证的 110 个预设脚本，另有 `examples/vbs/` 中的 2 个最小示例。脚本保留 UTF-8 BOM，适合由 OfficeAddin 的 VBS Host 运行时加载。
+本目录只收录经过 Host-first 验证的 131 个预设脚本，另有 `examples/vbs/` 中的 2 个最小示例。脚本保留 UTF-8 BOM，适合由 OfficeAddin 的 VBS Host 运行时加载。
 
 ## 分类
 
 | 目录 | 数量 | 内容 |
 |---|---:|---|
 | common/ | 11 | 上下文、文件、剪贴板、计划和诊断 |
-| word/ | 26 | Word 排版、审阅、导出和选区处理 |
-| excel/ | 44 | Excel 清洗、校验、汇总、映射和格式化 |
-| powerpoint/ | 29 | PowerPoint 文本、版式、导出和对象处理 |
+| word/ | 35 | Word 排版、审阅、导出和选区处理 |
+| excel/ | 53 | Excel 清洗、校验、汇总、映射和格式化 |
+| powerpoint/ | 32 | PowerPoint 文本、版式、导出和对象处理 |
 
 脚本还可按头部描述区分只读、预览和写入型操作。写入型脚本应在运行前展示影响范围，并使用 Host.BeginWritePlan()、Host.PreviewWritePlan()、Host.ValidateWritePlan() 和 Host.CommitWritePlan() 等能力。
 

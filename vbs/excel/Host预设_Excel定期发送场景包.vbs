@@ -1,814 +1,517 @@
-﻿' 函数名: HostExcelFilterDeliveryPack
-
-' 描述: 筛选交付场景包：支持内置预设/上次/命名规则复用与 1-3 条件 AND/OR；预览命中后生成筛选副本（含_来源行）与处理摘要，不改源表
-
+﻿' 函数名: HostExcelScheduledSendPack
+' 描述: 定期发送场景包。按日报/周报/未完成清单规则生成发送清单与发送记录，可选导出 CSV；预览确认后只写输出，不改源表。
 ' 适用应用: Excel
-
 ' 搜索范围: 当前范围
-
 ' 搜索对象: 无
-
 ' 作用范围: 当前范围
-
-' 输出类型: 表
+' 需要选区: 是
+' 破坏范围: 当前范围
+' 需要备份: 否
 
 Option Explicit
 
 Function Main()
-
     On Error Resume Next
-
     Dim appObj
-
     Set appObj = Host.GetApplication()
-
     If Err.Number <> 0 Or TypeName(appObj) = "Empty" Or TypeName(appObj) = "Nothing" Then
-
         Err.Clear
-
         Main = FailureJson("E_NO_EXCEL_APP", "未取得 Excel 应用，请在 Excel 中运行该预设")
-
         Exit Function
-
     End If
-
-    Main = HostExcelFilterDeliveryPack(appObj)
-
+    Main = HostExcelScheduledSendPack(appObj)
 End Function
 
-Function HostExcelFilterDeliveryPack(appObj)
+Function HostExcelScheduledSendPack(appObj)
     On Error Resume Next
     Dim sourceRange, sourceSheet, sourceName, outputMode
     Set sourceRange = appObj.Selection.CurrentRegion
     If Err.Number <> 0 Or TypeName(sourceRange) = "Empty" Or TypeName(sourceRange) = "Nothing" Then
         Err.Clear
-        HostExcelFilterDeliveryPack = FailureJson("E_NO_RANGE", "请先选中带表头的数据区域")
+        HostExcelScheduledSendPack = FailureJson("E_NO_RANGE", "请先选中含表头的数据区域")
         Exit Function
     End If
     If sourceRange.Rows.Count < 2 Then
-        HostExcelFilterDeliveryPack = FailureJson("E_RANGE_TOO_SMALL", "当前区域至少需要一行表头和一行数据")
+        HostExcelScheduledSendPack = FailureJson("E_RANGE_TOO_SMALL", "当前区域至少需要一行表头和一行数据")
         Exit Function
     End If
     Set sourceSheet = sourceRange.Worksheet
     sourceName = sourceSheet.Name
+
+    Dim sceneName, statusField, ownerField, dateField, recipientText, deliveryMode
+    sceneName = NormalizeSendScene(SafePrompt("发送场景：日报 / 周报 / 未完成清单（默认 日报）", "日报"))
+    statusField = Trim(SafePrompt("状态字段（可空）", GuessHeaderByKeywords(sourceRange, "状态,进度,完成情况")))
+    ownerField = Trim(SafePrompt("负责人字段（可空）", GuessHeaderByKeywords(sourceRange, "负责人,跟进人,处理人,责任人,owner")))
+    dateField = Trim(SafePrompt("日期字段（可空）", GuessHeaderByKeywords(sourceRange, "日期,截止日期,到期日,业务日期,完成日期")))
+    recipientText = Trim(SafePrompt("接收人备注（可空，仅写入发送记录）", "相关同事"))
+    If Len(recipientText) = 0 Then recipientText = "相关同事"
+    deliveryMode = NormalizeDeliveryMode(SafePrompt("交付方式：sheet / export / both（默认 both）", "both"))
     outputMode = NormalizeOutputMode(SafePrompt("输出模式：NewSheet 或 NewWorkbook（默认 NewSheet）", "NewSheet"))
 
-    Dim presetChoice, ruleLoaded, ruleText, ruleNameUsed, ruleSummary
-    ruleLoaded = False
-    ruleNameUsed = "手动输入"
-    ruleSummary = ""
-    presetChoice = Trim(SafePrompt("规则来源：内置预设 / 上次 / 命名规则 / 手动（默认 内置预设）", "内置预设"))
-
-    Dim logicText, logicCode
-    Dim fields(3), keywords(3), modes(3), columns(3)
-    Dim condCount, idx, defaultField
-    condCount = 0
-    defaultField = CStr(sourceRange.Cells(1, 1).Text)
-
-    If StrComp(presetChoice, "上次", vbTextCompare) = 0 Or LCase(presetChoice) = "last" Then
-        ruleText = ReadTextFile(RuleFilePath("filter", "last"))
-        If Len(Trim(ruleText)) > 0 Then
-            ruleLoaded = ApplyFilterRuleText(ruleText, sourceRange, logicCode, fields, keywords, modes, columns, condCount)
-            If ruleLoaded Then
-                ruleNameUsed = "上次"
-                ruleSummary = BuildConditionSummary(fields, keywords, modes, condCount, logicCode)
-            End If
-        End If
-        If Not ruleLoaded Then
-            HostExcelFilterDeliveryPack = FailureJson("E_RULE_LOAD", "未找到可用的上次筛选规则，请改用内置预设或手动")
-            Exit Function
-        End If
-    ElseIf StrComp(presetChoice, "命名规则", vbTextCompare) = 0 Or StrComp(presetChoice, "命名", vbTextCompare) = 0 Then
-        Dim named
-        named = PromptNamedRuleName("filter")
-        If Len(named) = 0 Then
-            HostExcelFilterDeliveryPack = FailureJson("E_RULE_NAME", "未提供命名规则名称")
-            Exit Function
-        End If
-        ruleText = ReadTextFile(RuleFilePath("filter", named))
-        If Len(Trim(ruleText)) = 0 Then
-            HostExcelFilterDeliveryPack = FailureJson("E_RULE_LOAD", "未找到命名筛选规则：" & named)
-            Exit Function
-        End If
-        ruleLoaded = ApplyFilterRuleText(ruleText, sourceRange, logicCode, fields, keywords, modes, columns, condCount)
-        If Not ruleLoaded Then
-            HostExcelFilterDeliveryPack = FailureJson("E_RULE_LOAD", "命名筛选规则无效：" & named)
-            Exit Function
-        End If
-        ruleNameUsed = named
-        ruleSummary = BuildConditionSummary(fields, keywords, modes, condCount, logicCode)
-    ElseIf StrComp(presetChoice, "手动", vbTextCompare) = 0 Or LCase(presetChoice) = "manual" Then
-                logicText = Trim(SafePrompt("条件关系：AND 或 OR（表头：" & BuildHeaderHint(sourceRange) & "）", "AND"))
-        logicCode = NormalizeLogic(logicText)
-        For idx = 1 To 3
-            fields(idx) = Trim(SafePrompt("条件" & CStr(idx) & " 字段名（留空结束）（表头：" & BuildHeaderHint(sourceRange) & "）", IIf(idx = 1, defaultField, "")))
-            If Len(fields(idx)) = 0 Then Exit For
-            columns(idx) = FindHeaderColumn(sourceRange, fields(idx))
-            If columns(idx) <= 0 Then
-                HostExcelFilterDeliveryPack = FailureJson("E_FIELD_NOT_FOUND", "未找到筛选字段：" & fields(idx))
-                Exit Function
-            End If
-            keywords(idx) = SafePrompt("条件" & CStr(idx) & " 关键词（日期可用 TODAY；数值比较配合匹配方式）", "")
-            modes(idx) = NormalizeMatchMode(SafePrompt("条件" & CStr(idx) & " 匹配方式：精确/包含/不等于/大于/小于/大于等于/小于等于/日期早于/日期晚于", "精确"))
-            condCount = condCount + 1
-        Next
-        If condCount = 0 Then
-            HostExcelFilterDeliveryPack = FailureJson("E_NO_CONDITION", "至少需要 1 个筛选条件")
-            Exit Function
-        End If
-        ruleNameUsed = "手动输入"
-        ruleSummary = BuildConditionSummary(fields, keywords, modes, condCount, logicCode)
-    Else
-        Dim builtinName, statusField, dateField, amountField, ownerField
-        builtinName = Trim(SafePrompt("内置预设：1本周未完成 / 2待回款 / 3高优先级未完成 / 4逾期未完成（默认 1）", "1"))
-        statusField = GuessHeaderByKeywords(sourceRange, "状态,进度,完成情况,处理状态")
-        dateField = GuessHeaderByKeywords(sourceRange, "截止日期,到期日,到期日期,完成日期,日期,计划完成")
-        amountField = GuessHeaderByKeywords(sourceRange, "金额,回款金额,待回款,未回款,应收")
-        ownerField = GuessHeaderByKeywords(sourceRange, "负责人,处理人,跟进人,责任人")
-        If Len(statusField) = 0 Then statusField = defaultField
-
-        logicCode = "AND"
-        If builtinName = "2" Or InStr(1, builtinName, "回款", vbTextCompare) > 0 Then
-            ruleNameUsed = "待回款"
-            fields(1) = statusField
-            keywords(1) = "待回款"
-            modes(1) = "contains"
-            columns(1) = FindHeaderColumn(sourceRange, fields(1))
-            condCount = 1
-            If columns(1) <= 0 And Len(amountField) > 0 Then
-                fields(1) = amountField
-                keywords(1) = "0"
-                modes(1) = "ne"
-                columns(1) = FindHeaderColumn(sourceRange, fields(1))
-            End If
-            If Len(amountField) > 0 And StrComp(fields(1), amountField, vbTextCompare) <> 0 Then
-                fields(2) = amountField
-                keywords(2) = "0"
-                modes(2) = "gt"
-                columns(2) = FindHeaderColumn(sourceRange, fields(2))
-                If columns(2) > 0 Then condCount = 2
-            End If
-        ElseIf builtinName = "3" Or InStr(1, builtinName, "优先", vbTextCompare) > 0 Then
-            ruleNameUsed = "高优先级未完成"
-            Dim prioField
-            prioField = GuessHeaderByKeywords(sourceRange, "优先级,重要程度,级别,P级")
-            If Len(prioField) = 0 Then prioField = statusField
-            fields(1) = prioField
-            keywords(1) = "高"
-            modes(1) = "contains"
-            columns(1) = FindHeaderColumn(sourceRange, fields(1))
-            fields(2) = statusField
-            keywords(2) = "已完成"
-            modes(2) = "ne"
-            columns(2) = FindHeaderColumn(sourceRange, fields(2))
-            condCount = 0
-            If columns(1) > 0 Then condCount = condCount + 1 Else fields(1) = ""
-            If columns(2) > 0 Then
-                If condCount = 0 Then
-                    fields(1) = fields(2): keywords(1) = keywords(2): modes(1) = modes(2): columns(1) = columns(2)
-                End If
-                condCount = condCount + 1
-            End If
-        ElseIf builtinName = "4" Or InStr(1, builtinName, "逾期", vbTextCompare) > 0 Then
-            ruleNameUsed = "逾期未完成"
-            fields(1) = statusField
-            keywords(1) = "已完成"
-            modes(1) = "ne"
-            columns(1) = FindHeaderColumn(sourceRange, fields(1))
-            condCount = 0
-            If columns(1) > 0 Then condCount = 1
-            If Len(dateField) > 0 Then
-                fields(condCount + 1) = dateField
-                keywords(condCount + 1) = "TODAY"
-                modes(condCount + 1) = "date_lt"
-                columns(condCount + 1) = FindHeaderColumn(sourceRange, fields(condCount + 1))
-                If columns(condCount + 1) > 0 Then condCount = condCount + 1
-            End If
-        Else
-            ruleNameUsed = "本周未完成"
-            fields(1) = statusField
-            keywords(1) = "已完成"
-            modes(1) = "ne"
-            columns(1) = FindHeaderColumn(sourceRange, fields(1))
-            condCount = 0
-            If columns(1) > 0 Then condCount = 1
-            If Len(ownerField) > 0 And condCount < 3 Then
-                fields(condCount + 1) = ownerField
-                keywords(condCount + 1) = ""
-                modes(condCount + 1) = "ne"
-                columns(condCount + 1) = FindHeaderColumn(sourceRange, fields(condCount + 1))
-                If columns(condCount + 1) > 0 Then condCount = condCount + 1
-            End If
-        End If
-
-        If condCount = 0 Then
-            HostExcelFilterDeliveryPack = FailureJson("E_PRESET_FIELDS", "内置预设未能匹配到可用字段，请改用手动或检查表头")
-            Exit Function
-        End If
-        ' allow user override after preset
-        Dim confirmPreset
-        ruleSummary = BuildConditionSummary(fields, keywords, modes, condCount, logicCode)
-        confirmPreset = Trim(SafePrompt("将使用预设【" & ruleNameUsed & "】：" & ruleSummary & "。回车沿用，或输入“手动”改写", ""))
-        If StrComp(confirmPreset, "手动", vbTextCompare) = 0 Then
-            logicText = Trim(SafePrompt("条件关系：AND 或 OR", logicCode))
-            logicCode = NormalizeLogic(logicText)
-            condCount = 0
-            For idx = 1 To 3
-                fields(idx) = Trim(SafePrompt("条件" & CStr(idx) & " 字段名（留空结束）（表头：" & BuildHeaderHint(sourceRange) & "）", IIf(idx = 1, fields(1), "")))
-                If Len(fields(idx)) = 0 Then Exit For
-                columns(idx) = FindHeaderColumn(sourceRange, fields(idx))
-                If columns(idx) <= 0 Then
-                    HostExcelFilterDeliveryPack = FailureJson("E_FIELD_NOT_FOUND", "未找到筛选字段：" & fields(idx))
-                    Exit Function
-                End If
-                keywords(idx) = SafePrompt("条件" & CStr(idx) & " 关键词（日期可用 TODAY；数值比较配合匹配方式）", keywords(idx))
-                modes(idx) = NormalizeMatchMode(SafePrompt("条件" & CStr(idx) & " 匹配方式：精确/包含/不等于/大于/小于/大于等于/小于等于/日期早于/日期晚于", modes(idx)))
-                condCount = condCount + 1
-            Next
-            ruleNameUsed = "手动输入"
-            ruleSummary = BuildConditionSummary(fields, keywords, modes, condCount, logicCode)
-        End If
-    End If
-
-    If ruleLoaded Then
-        ruleSummary = BuildConditionSummary(fields, keywords, modes, condCount, logicCode)
-        If PromptRuleOverride(ruleNameUsed & "：" & ruleSummary) Then
-            logicText = Trim(SafePrompt("条件关系：AND 或 OR（表头：" & BuildHeaderHint(sourceRange) & "）", logicCode))
-            logicCode = NormalizeLogic(logicText)
-            condCount = 0
-            For idx = 1 To 3
-                fields(idx) = Trim(SafePrompt("条件" & CStr(idx) & " 字段名（留空结束）（表头：" & BuildHeaderHint(sourceRange) & "）", IIf(idx = 1, fields(1), "")))
-                If Len(fields(idx)) = 0 Then Exit For
-                columns(idx) = FindHeaderColumn(sourceRange, fields(idx))
-                If columns(idx) <= 0 Then
-                    HostExcelFilterDeliveryPack = FailureJson("E_FIELD_NOT_FOUND", "未找到筛选字段：" & fields(idx))
-                    Exit Function
-                End If
-                keywords(idx) = SafePrompt("条件" & CStr(idx) & " 关键词（日期可用 TODAY；数值比较配合匹配方式）", keywords(idx))
-                modes(idx) = NormalizeMatchMode(SafePrompt("条件" & CStr(idx) & " 匹配方式：精确/包含/不等于/大于/小于/大于等于/小于等于/日期早于/日期晚于", modes(idx)))
-                condCount = condCount + 1
-            Next
-            ruleNameUsed = "手动输入"
-            ruleSummary = BuildConditionSummary(fields, keywords, modes, condCount, logicCode)
-        End If
-    End If
-
-    If condCount = 0 Then
-        HostExcelFilterDeliveryPack = FailureJson("E_NO_CONDITION", "至少需要 1 个筛选条件")
+    Dim statusCol, ownerCol, dateCol, dataRows
+    statusCol = 0: ownerCol = 0: dateCol = 0
+    If Len(statusField) > 0 Then statusCol = FindHeaderColumn(sourceRange, statusField)
+    If Len(ownerField) > 0 Then ownerCol = FindHeaderColumn(sourceRange, ownerField)
+    If Len(dateField) > 0 Then dateCol = FindHeaderColumn(sourceRange, dateField)
+    If Len(statusField) > 0 And statusCol <= 0 Then
+        HostExcelScheduledSendPack = FailureJson("E_FIELD_NOT_FOUND", "未找到状态字段：" & statusField)
         Exit Function
     End If
-    ruleSummary = BuildConditionSummary(fields, keywords, modes, condCount, logicCode)
+    If Len(ownerField) > 0 And ownerCol <= 0 Then
+        HostExcelScheduledSendPack = FailureJson("E_FIELD_NOT_FOUND", "未找到负责人字段：" & ownerField)
+        Exit Function
+    End If
+    If Len(dateField) > 0 And dateCol <= 0 Then
+        HostExcelScheduledSendPack = FailureJson("E_FIELD_NOT_FOUND", "未找到日期字段：" & dateField)
+        Exit Function
+    End If
 
-    Dim rowIndex, matchCount
-    matchCount = 0
-    For rowIndex = 2 To sourceRange.Rows.Count
-        If RowMatchesConditions(sourceRange, rowIndex, columns, keywords, modes, condCount, logicCode) Then matchCount = matchCount + 1
+    dataRows = sourceRange.Rows.Count - 1
+    Dim matchFlags(), matchCount, openCount, doneCount, overdueCount
+    Dim r, statusText, isDone, isOpen, isOverdue, text, normalized, includeRow
+    Dim hasDate, rowDate, weekStart, weekEnd, windowText
+    ReDim matchFlags(sourceRange.Rows.Count)
+    matchCount = 0: openCount = 0: doneCount = 0: overdueCount = 0
+    ' week window starts Monday (Weekday(..., vbMonday)).
+    weekStart = Date - (Weekday(Date, vbMonday) - 1)
+    weekEnd = weekStart + 6
+    If sceneName = "周报" Then
+        windowText = "本周 " & FormatDateTime(weekStart, vbShortDate) & " ~ " & FormatDateTime(weekEnd, vbShortDate)
+    ElseIf sceneName = "日报" Then
+        windowText = "今天 " & FormatDateTime(Date, vbShortDate)
+    Else
+        windowText = "未完成/开口项"
+    End If
+
+    For r = 2 To sourceRange.Rows.Count
+        statusText = ""
+        isDone = False
+        isOpen = False
+        isOverdue = False
+        hasDate = False
+        rowDate = Date
+        If statusCol > 0 Then
+            statusText = NormalizeCellText(sourceRange.Cells(r, statusCol).Text)
+            If IsDoneStatus(statusText) Then
+                isDone = True
+                doneCount = doneCount + 1
+            Else
+                isOpen = True
+                openCount = openCount + 1
+            End If
+        End If
+        If dateCol > 0 Then
+            ' Prefer Value/DateValue so narrow-column Text (###) does not drop real dates.
+            On Error Resume Next
+            If IsDate(sourceRange.Cells(r, dateCol).Value) Then
+                hasDate = True
+                rowDate = DateValue(CDate(sourceRange.Cells(r, dateCol).Value))
+            End If
+            If Err.Number <> 0 Then
+                Err.Clear
+                hasDate = False
+            End If
+            On Error Resume Next
+            If Not hasDate Then
+                text = NormalizeCellText(sourceRange.Cells(r, dateCol).Text)
+                If TryNormalizeDateText(text, normalized) Then
+                    hasDate = True
+                    rowDate = DateValue(CDate(normalized))
+                End If
+            End If
+            If hasDate Then
+                If rowDate < Date Then
+                    If statusCol <= 0 Or isOpen Then
+                        isOverdue = True
+                        overdueCount = overdueCount + 1
+                    End If
+                End If
+            End If
+        End If
+
+        includeRow = False
+        If sceneName = "未完成清单" Then
+            If statusCol > 0 Then
+                includeRow = isOpen
+            ElseIf dateCol > 0 Then
+                includeRow = isOverdue
+            Else
+                includeRow = True
+            End If
+        ElseIf sceneName = "周报" Then
+            ' weekly: date in current Mon-Sun window; no date col => full snapshot.
+            If dateCol <= 0 Then
+                includeRow = True
+            ElseIf hasDate Then
+                includeRow = (rowDate >= weekStart And rowDate <= weekEnd)
+            Else
+                ' unparsable date keeps open items to avoid silent drop.
+                includeRow = (statusCol <= 0 Or isOpen)
+            End If
+        Else
+            ' daily: only today; no date col => full snapshot.
+            If dateCol <= 0 Then
+                includeRow = True
+            ElseIf hasDate Then
+                includeRow = (rowDate = DateValue(Date))
+            Else
+                includeRow = (statusCol <= 0 Or isOpen)
+            End If
+        End If
+        matchFlags(r) = includeRow
+        If includeRow Then matchCount = matchCount + 1
     Next
 
+    Dim needExport, needSheet, formatName, delimiter, extension, outputPlan, outputPath, defaultName
+    needExport = (deliveryMode = "export" Or deliveryMode = "both")
+    needSheet = (deliveryMode = "sheet" Or deliveryMode = "both")
+    formatName = "csv"
+    delimiter = ","
+    extension = ".csv"
+    outputPath = ""
+    If needExport Then
+        formatName = NormalizeExportFormat(SafePrompt("导出格式：CSV 或 TSV", "CSV"))
+        If formatName = "tsv" Then
+            delimiter = vbTab
+            extension = ".tsv"
+        End If
+        defaultName = "excel_scheduled_send_" & FormatFileStamp(Now()) & extension
+        On Error Resume Next
+        outputPlan = Host.ResolveOutputPlan(defaultName, "avoid")
+        If Err.Number <> 0 Then
+            Err.Clear
+            outputPlan = ""
+        End If
+        outputPath = ExtractJsonString(outputPlan, "path")
+        If Len(outputPath) = 0 Then
+            HostExcelScheduledSendPack = FailureJson("E_OUTPUT_PATH", "无法生成避免覆盖的导出文件路径，未改表")
+            Exit Function
+        End If
+    End If
+
     Dim previewText, planId, planPreview
-    previewText = "Excel 筛选交付场景包预览（尚未写入）" & vbCrLf & _
-        "命令ID：excel.filter_delivery_pack" & vbCrLf & _
-        "源表=" & sourceName & "；区域=" & sourceRange.Address & vbCrLf & _
-        "输出模式=" & outputMode & vbCrLf & _
-        "规则来源=" & ruleNameUsed & vbCrLf & _
-        "条件=" & ruleSummary & vbCrLf & _
-        "数据行=" & CStr(sourceRange.Rows.Count - 1) & "；命中=" & CStr(matchCount) & vbCrLf & _
-        "将生成：筛选结果（含_来源行） + 处理摘要；sourceUnchanged=true"
+    previewText = "Excel 定期发送预览（尚未写入）" & vbCrLf & _
+        "场景ID：excel.scheduled_send_pack" & vbCrLf & _
+        "源表=" & sourceName & "，范围=" & sourceRange.Address & vbCrLf & _
+        "发送场景=" & sceneName & "，交付方式=" & deliveryMode & "，输出模式=" & outputMode & vbCrLf & _
+        "接收人=" & recipientText & vbCrLf & _
+        "字段：状态=" & statusField & "，负责人=" & ownerField & "，日期=" & dateField & vbCrLf & _
+        "日期窗口=" & windowText & vbCrLf & _
+        "源数据行=" & CStr(dataRows) & "，待发送行=" & CStr(matchCount) & _
+        "，进行中/未完成=" & CStr(openCount) & "，已完成=" & CStr(doneCount) & "，逾期候选=" & CStr(overdueCount) & vbCrLf
+    If needExport Then previewText = previewText & "导出=" & UCase(formatName) & "，路径=" & outputPath & vbCrLf
+    previewText = previewText & "将生成：发送清单" & IIf(needSheet, "工作表", "") & IIf(needExport, "/导出文件", "") & " + 发送记录 + 处理摘要；sourceUnchanged=true，不改源表"
 
     planId = SafeBeginWritePlan()
-    SafeRecordWrite "excel_filter_delivery_pack", "{""source"":""" & EscapeJson(sourceRange.Address) & """,""logic"":""" & EscapeJson(logicCode) & """,""conditions"":" & CStr(condCount) & ",""matches"":" & CStr(matchCount) & ",""rule"":""" & EscapeJson(ruleNameUsed) & """}", "office.excel.filterDeliveryPack"
+    SafeRecordWrite "excel_scheduled_send_pack", "{""source"":""" & EscapeJson(sourceRange.Address) & """,""scene"":""" & EscapeJson(sceneName) & """,""matchCount"":" & CStr(matchCount) & ",""deliveryMode"":""" & EscapeJson(deliveryMode) & """}", "office.excel.scheduledSendPack"
     planPreview = SafePreviewWritePlan()
     SafeRollbackWritePlan planId
 
-    If Not SafeConfirmStep(previewText & vbCrLf & vbCrLf & "确认生成筛选交付结果？", "excel.filter_delivery_pack") Then
-        HostExcelFilterDeliveryPack = FailureJson("E_CONFIRM_REQUIRED", "用户取消或未确认，未修改工作簿")
+    If Not SafeConfirmStep(previewText & vbCrLf & vbCrLf & "确认生成定期发送清单与记录？", "excel.scheduled_send_pack") Then
+        HostExcelScheduledSendPack = FailureJson("E_CONFIRM_REQUIRED", "用户取消或未确认，未修改工作簿与文件")
         Exit Function
     End If
 
-    Dim createdSheets(), createdCount, filterSheet, summarySheet, outRows
+    Dim createdSheets(), createdCount, listSheet, recordSheet, summarySheet
     createdCount = 0
-    ReDim createdSheets(4)
-    outRows = 0
+    ReDim createdSheets(6)
+    Set listSheet = Nothing
+    Set recordSheet = Nothing
 
-    Set filterSheet = CreateOutputSheet(appObj, sourceName, "筛选结果", outputMode)
-    If filterSheet Is Nothing Then
-        HostExcelFilterDeliveryPack = FailureJson("E_OUTPUT_SHEET", "无法创建筛选结果工作表")
-        Exit Function
+    If needSheet Then
+        Set listSheet = CreateOutputSheet(appObj, sourceName, "发送清单", outputMode)
+        If listSheet Is Nothing Then
+            HostExcelScheduledSendPack = FailureJson("E_OUTPUT_SHEET", "无法创建发送清单工作表")
+            Exit Function
+        End If
+        createdCount = createdCount + 1: Set createdSheets(createdCount) = listSheet
+        If Not WriteSendListSheet(sourceRange, listSheet, matchFlags, sceneName, recipientText, statusField, ownerField, dateField, matchCount) Then
+            RollbackCreatedSheets appObj, createdSheets, createdCount
+            HostExcelScheduledSendPack = FailureJson("E_LIST_WRITE", "发送清单写入失败，已删除未完成输出")
+            Exit Function
+        End If
     End If
-    createdCount = createdCount + 1: Set createdSheets(createdCount) = filterSheet
 
-    If Not WriteFilteredSheet(sourceRange, columns, keywords, modes, condCount, logicCode, filterSheet, outRows) Then
+    Dim exportText, written
+    written = False
+    If needExport Then
+        exportText = BuildSendListExportText(sourceRange, matchFlags, formatName, delimiter)
+        On Error Resume Next
+        written = Host.WriteTextFile(outputPath, exportText, False)
+        If Err.Number <> 0 Then
+            Err.Clear
+            written = False
+        End If
+        If Not CBool(written) Then
+            RollbackCreatedSheets appObj, createdSheets, createdCount
+            HostExcelScheduledSendPack = FailureJson("E_EXPORT_WRITE", "导出文件写入失败，未修改源表：" & outputPath)
+            Exit Function
+        End If
+    End If
+
+    Set recordSheet = CreateOutputSheet(appObj, sourceName, "发送记录", outputMode)
+    If recordSheet Is Nothing Then
         RollbackCreatedSheets appObj, createdSheets, createdCount
-        HostExcelFilterDeliveryPack = FailureJson("E_FILTER_WRITE", "筛选结果写入失败，已删除未完成输出")
+        HostExcelScheduledSendPack = FailureJson("E_OUTPUT_SHEET", "无法创建发送记录工作表")
         Exit Function
     End If
+    createdCount = createdCount + 1: Set createdSheets(createdCount) = recordSheet
+    WriteSendRecordSheet recordSheet, sceneName, recipientText, sourceName, sourceRange.Address, matchCount, dataRows, openCount, doneCount, overdueCount, deliveryMode, outputPath, statusField, ownerField, dateField
 
     Set summarySheet = CreateOutputSheet(appObj, sourceName, "处理摘要", outputMode)
     If summarySheet Is Nothing Then
         RollbackCreatedSheets appObj, createdSheets, createdCount
-        HostExcelFilterDeliveryPack = FailureJson("E_OUTPUT_SHEET", "无法创建处理摘要工作表")
+        HostExcelScheduledSendPack = FailureJson("E_OUTPUT_SHEET", "无法创建处理摘要工作表")
         Exit Function
     End If
     createdCount = createdCount + 1: Set createdSheets(createdCount) = summarySheet
 
-    Dim summaryLines, impactJson, summary, saveBlob
-    summaryLines = "场景名=筛选交付场景包" & vbCrLf & _
-        "命令ID=excel.filter_delivery_pack" & vbCrLf & _
+    Dim summaryLines, impactJson, summary, outputNames, listName
+    listName = ""
+    If needSheet Then listName = listSheet.Name
+    outputNames = ""
+    If needSheet Then outputNames = listSheet.Name
+    If Len(outputNames) > 0 Then outputNames = outputNames & ","
+    outputNames = outputNames & recordSheet.Name & "," & summarySheet.Name
+    If needExport Then outputNames = outputNames & "," & outputPath
+
+    summaryLines = "场景名=定期发送场景包" & vbCrLf & _
+        "场景ID=excel.scheduled_send_pack" & vbCrLf & _
         "源表名称=" & sourceName & vbCrLf & _
-        "源区域=" & sourceRange.Address & vbCrLf & _
+        "源范围=" & sourceRange.Address & vbCrLf & _
         "输出模式=" & outputMode & vbCrLf & _
-        "输出位置=" & filterSheet.Name & "," & summarySheet.Name & vbCrLf & _
-        "处理前行数=" & CStr(sourceRange.Rows.Count - 1) & vbCrLf & _
-        "处理后行数=" & CStr(outRows) & vbCrLf & _
-        "规则来源=" & ruleNameUsed & vbCrLf & _
-        "参数=logic=" & logicCode & ";conditions=" & CStr(condCount) & vbCrLf & _
-        "条件=" & ruleSummary & vbCrLf & _
-        "命中行数=" & CStr(outRows) & vbCrLf & _
+        "交付方式=" & deliveryMode & vbCrLf & _
+        "发送场景=" & sceneName & vbCrLf & _
+        "接收人=" & recipientText & vbCrLf & _
+        "输出位置=" & outputNames & vbCrLf & _
+        "处理前行数=" & CStr(dataRows) & vbCrLf & _
+        "处理后行数=" & CStr(matchCount) & vbCrLf & _
+        "规则=scene=" & sceneName & ";status=" & statusField & ";owner=" & ownerField & ";date=" & dateField & vbCrLf & _
+        "日期窗口=" & windowText & vbCrLf & _
+        "进行中=" & CStr(openCount) & vbCrLf & _
+        "已完成=" & CStr(doneCount) & vbCrLf & _
+        "逾期候选=" & CStr(overdueCount) & vbCrLf & _
+        "导出路径=" & outputPath & vbCrLf & _
         "执行时间=" & Now & vbCrLf & _
-        "结果=成功"
+        "结果=成功（已生成发送清单/记录，实际推送需外部通道）"
     impactJson = SafeHostText("ExcelWriteImpactSummary", summaryLines, summarySheet.Name)
     If Not ExtractJsonBoolean(impactJson, "ok") Then WriteSummaryFallback summarySheet, summaryLines
 
-    saveBlob = SerializeFilterRule(logicCode, fields, keywords, modes, condCount, ruleNameUsed)
-    MaybeSaveRule "filter", ruleNameUsed, saveBlob
-
-    summary = "Excel 筛选交付完成：输出=" & filterSheet.Name & "；命中=" & CStr(outRows) & "；条件数=" & CStr(condCount) & "；规则=" & ruleNameUsed & "；sourceUnchanged=true"
+    summary = "Excel 定期发送准备完成：场景=" & sceneName & "，待发送行=" & CStr(matchCount)
+    If needSheet Then summary = summary & "，清单=" & listName
+    summary = summary & "，记录=" & recordSheet.Name
+    If needExport Then summary = summary & "，文件=" & outputPath
+    summary = summary & "，sourceUnchanged=true"
     Host.WriteClipboard summary
     SafeWriteLog summary
 
-    HostExcelFilterDeliveryPack = "{""ok"":true,""sourceUnchanged"":true,""commandId"":""excel.filter_delivery_pack"",""outputSheet"":""" & EscapeJson(filterSheet.Name) & """,""summarySheet"":""" & EscapeJson(summarySheet.Name) & """,""matchedRows"":" & CStr(outRows) & ",""conditions"":" & CStr(condCount) & ",""rule"":""" & EscapeJson(ruleNameUsed) & """,""writePlanPreview"":""" & EscapeJson(planPreview) & """,""message"":""" & EscapeJson(summary) & """}"
+    HostExcelScheduledSendPack = "{""ok"":true,""sourceUnchanged"":true,""commandId"":""excel.scheduled_send_pack"",""scene"":""" & EscapeJson(sceneName) & """,""matchCount"":" & CStr(matchCount) & ",""deliveryMode"":""" & EscapeJson(deliveryMode) & """,""listSheet"":""" & EscapeJson(listName) & """,""recordSheet"":""" & EscapeJson(recordSheet.Name) & """,""summarySheet"":""" & EscapeJson(summarySheet.Name) & """,""exportPath"":""" & EscapeJson(outputPath) & """,""recipient"":""" & EscapeJson(recipientText) & """,""writePlanPreview"":""" & EscapeJson(planPreview) & """,""message"":""" & EscapeJson(summary) & """}"
 End Function
 
-Function SerializeFilterRule(logicCode, ByRef fields, ByRef keywords, ByRef modes, condCount, ruleNameUsed)
-    Dim i, buf
-    buf = "version=1" & vbCrLf & "kind=filter" & vbCrLf & "name=" & ruleNameUsed & vbCrLf & "logic=" & logicCode & vbCrLf & "count=" & CStr(condCount)
-    For i = 1 To condCount
-        buf = buf & vbCrLf & "field" & CStr(i) & "=" & fields(i)
-        buf = buf & vbCrLf & "keyword" & CStr(i) & "=" & keywords(i)
-        buf = buf & vbCrLf & "mode" & CStr(i) & "=" & modes(i)
-    Next
-    SerializeFilterRule = buf
-End Function
-
-Function ApplyFilterRuleText(ruleText, sourceRange, ByRef logicCode, ByRef fields, ByRef keywords, ByRef modes, ByRef columns, ByRef condCount)
-    Dim i, n, f, k, m, c
-    ApplyFilterRuleText = False
-    logicCode = NormalizeLogic(ExtractRuleValue(ruleText, "logic"))
-    n = Val(ExtractRuleValue(ruleText, "count"))
-    If n <= 0 Then n = 3
-    If n > 3 Then n = 3
-    condCount = 0
-    For i = 1 To n
-        f = Trim(ExtractRuleValue(ruleText, "field" & CStr(i)))
-        If Len(f) = 0 Then Exit For
-        k = ExtractRuleValue(ruleText, "keyword" & CStr(i))
-        m = NormalizeMatchMode(ExtractRuleValue(ruleText, "mode" & CStr(i)))
-        c = FindHeaderColumn(sourceRange, f)
-        If c <= 0 Then Exit Function
-        condCount = condCount + 1
-        fields(condCount) = f
-        keywords(condCount) = k
-        modes(condCount) = m
-        columns(condCount) = c
-    Next
-    ApplyFilterRuleText = (condCount > 0)
-End Function
-
-Function RowMatchesConditions(sourceRange, rowIndex, ByRef columns, ByRef keywords, ByRef modes, condCount, logicCode)
-
-    Dim i, matched, cellText, oneMatch
-
-    If logicCode = "OR" Then
-
-        matched = False
-
-        For i = 1 To condCount
-
-            cellText = CStr(sourceRange.Cells(rowIndex, columns(i)).Text)
-
-            If IsMatch(cellText, keywords(i), modes(i)) Then
-
-                matched = True
-
-                Exit For
-
-            End If
-
-        Next
-
+Function NormalizeSendScene(text)
+    Dim t
+    t = LCase(Trim(CStr(text)))
+    If t = "week" Or t = "weekly" Or t = "周" Or t = "周报" Then
+        NormalizeSendScene = "周报"
+    ElseIf t = "open" Or t = "todo" Or t = "未完成" Or t = "未完成清单" Or t = "3" Then
+        NormalizeSendScene = "未完成清单"
     Else
-
-        matched = True
-
-        For i = 1 To condCount
-
-            cellText = CStr(sourceRange.Cells(rowIndex, columns(i)).Text)
-
-            oneMatch = IsMatch(cellText, keywords(i), modes(i))
-
-            If Not oneMatch Then
-
-                matched = False
-
-                Exit For
-
-            End If
-
-        Next
-
+        NormalizeSendScene = "日报"
     End If
-
-    RowMatchesConditions = matched
-
 End Function
 
-Function BuildConditionSummary(ByRef fields, ByRef keywords, ByRef modes, condCount, logicCode)
-
-    Dim i, buf
-
-    buf = "logic=" & logicCode
-
-    For i = 1 To condCount
-
-        buf = buf & ";[" & CStr(i) & "]" & fields(i) & " " & MatchModeLabel(modes(i)) & " " & keywords(i)
-
-    Next
-
-    BuildConditionSummary = buf
-
+Function NormalizeDeliveryMode(value)
+    Dim t
+    t = LCase(Trim(CStr(value)))
+    If t = "sheet" Or t = "工作表" Or t = "表" Then
+        NormalizeDeliveryMode = "sheet"
+    ElseIf t = "export" Or t = "file" Or t = "导出" Or t = "csv" Or t = "tsv" Then
+        NormalizeDeliveryMode = "export"
+    Else
+        NormalizeDeliveryMode = "both"
+    End If
 End Function
 
-Function WriteFilteredSheet(sourceRange, ByRef columns, ByRef keywords, ByRef modes, condCount, logicCode, filterSheet, ByRef outRows)
-
-    On Error Resume Next
-
-    Dim c, r, outR, totalCols
-
-    WriteFilteredSheet = False
-
-    totalCols = sourceRange.Columns.Count
-
-    For c = 1 To totalCols
-
-        filterSheet.Cells(1, c).Value = sourceRange.Cells(1, c).Text
-
-    Next
-
-    filterSheet.Cells(1, totalCols + 1).Value = "_来源行"
-
-    outR = 1
-
-    For r = 2 To sourceRange.Rows.Count
-
-        If RowMatchesConditions(sourceRange, r, columns, keywords, modes, condCount, logicCode) Then
-
-            outR = outR + 1
-
-            For c = 1 To totalCols
-
-                filterSheet.Cells(outR, c).Value = sourceRange.Cells(r, c).Value
-
-            Next
-
-            filterSheet.Cells(outR, totalCols + 1).Value = sourceRange.Row + r - 1
-
-        End If
-
-    Next
-
-    outRows = outR - 1
-
-    filterSheet.Rows(1).Font.Bold = True
-
-    filterSheet.Columns.AutoFit
-
-    If Err.Number <> 0 Then
-
-        Err.Clear
-
+Function IsDoneStatus(statusText)
+    Dim t
+    t = NormalizeCellText(statusText)
+    If Len(t) = 0 Then
+        IsDoneStatus = False
         Exit Function
-
     End If
-
-    WriteFilteredSheet = True
-
+    ' Open/in-progress statuses must win over generic completion substring matches.
+    If InStr(1, t, "未完成", vbTextCompare) > 0 Or InStr(1, t, "未完", vbTextCompare) > 0 Or InStr(1, t, "进行中", vbTextCompare) > 0 Or InStr(1, t, "处理中", vbTextCompare) > 0 Or InStr(1, t, "待处理", vbTextCompare) > 0 Or InStr(1, t, "todo", vbTextCompare) > 0 Or InStr(1, t, "open", vbTextCompare) > 0 Or InStr(1, t, "pending", vbTextCompare) > 0 Then
+        IsDoneStatus = False
+        Exit Function
+    End If
+    If InStr(1, t, "已完成", vbTextCompare) > 0 Or InStr(1, t, "完成", vbTextCompare) > 0 Or InStr(1, t, "关闭", vbTextCompare) > 0 Or InStr(1, t, "已回款", vbTextCompare) > 0 Or InStr(1, t, "done", vbTextCompare) > 0 Or InStr(1, t, "closed", vbTextCompare) > 0 Or InStr(1, t, "complete", vbTextCompare) > 0 Then
+        IsDoneStatus = True
+    Else
+        IsDoneStatus = False
+    End If
 End Function
 
-Function SceneRulesDir()
-
-    Dim basePath
-
+Function WriteSendListSheet(sourceRange, listSheet, matchFlags, sceneName, recipientText, statusField, ownerField, dateField, matchCount)
     On Error Resume Next
+    Dim c, r, outRow, colCount
+    WriteSendListSheet = False
+    colCount = sourceRange.Columns.Count
+    listSheet.Cells(1, 1).Value = "定期发送清单"
+    listSheet.Cells(1, 1).Font.Bold = True
+    listSheet.Cells(1, 1).Font.Size = 13
+    listSheet.Cells(2, 1).Value = "发送场景"
+    listSheet.Cells(2, 2).Value = sceneName
+    listSheet.Cells(3, 1).Value = "接收人"
+    listSheet.Cells(3, 2).Value = recipientText
+    listSheet.Cells(4, 1).Value = "生成时间"
+    listSheet.Cells(4, 2).Value = Now
+    listSheet.Cells(5, 1).Value = "待发送行数"
+    listSheet.Cells(5, 2).Value = matchCount
+    listSheet.Cells(6, 1).Value = "状态字段"
+    listSheet.Cells(6, 2).Value = IIf(Len(statusField) > 0, statusField, "（未指定）")
+    listSheet.Cells(7, 1).Value = "负责人字段"
+    listSheet.Cells(7, 2).Value = IIf(Len(ownerField) > 0, ownerField, "（未指定）")
+    listSheet.Cells(8, 1).Value = "日期字段"
+    listSheet.Cells(8, 2).Value = IIf(Len(dateField) > 0, dateField, "（未指定）")
+    listSheet.Cells(9, 1).Value = "说明"
+    listSheet.Cells(9, 2).Value = "本页为待发送事实清单；实际邮件/IM 推送由外部通道完成"
 
-    basePath = ""
-
-    basePath = CStr(Host.GetKnownFolderPath("localappdata"))
-
-    If Len(Trim(basePath)) = 0 Then basePath = CStr(Host.GetKnownFolderPath("appdata"))
-
-    If Len(Trim(basePath)) = 0 Then basePath = CStr(Host.GetKnownFolderPath("temp"))
-
-    If Len(Trim(basePath)) = 0 Then basePath = "."
-
-    SceneRulesDir = Host.CombinePath(Host.CombinePath(basePath, "OfficeAddin"), "scene_rules")
-
-    Host.CreateFolder SceneRulesDir
-
-    Err.Clear
-
-End Function
-
-Function RuleFilePath(kindName, ruleName)
-
-    Dim safeName, i, ch, buf, fileName
-
-    safeName = LCase(Trim(CStr(ruleName)))
-
-    If Len(safeName) = 0 Then safeName = "last"
-
-    buf = ""
-
-    For i = 1 To Len(safeName)
-
-        ch = Mid(safeName, i, 1)
-
-        If (ch >= "a" And ch <= "z") Or (ch >= "0" And ch <= "9") Or ch = "_" Or ch = "-" Then
-
-            buf = buf & ch
-
-        ElseIf AscW(ch) > 127 Then
-
-            buf = buf & ch
-
-        Else
-
-            buf = buf & "_"
-
-        End If
-
+    outRow = 11
+    For c = 1 To colCount
+        listSheet.Cells(outRow, c).Value = sourceRange.Cells(1, c).Text
+        listSheet.Cells(outRow, c).Font.Bold = True
     Next
-
-    If Len(buf) = 0 Then buf = "last"
-
-    fileName = CStr(kindName) & "_" & buf & ".txt"
-
-    fileName = Host.SanitizeFileName(fileName, "last.txt")
-
-    RuleFilePath = Host.CombinePath(SceneRulesDir(), fileName)
-
-End Function
-
-Function ReadTextFile(pathText)
-
-    On Error Resume Next
-
-    ReadTextFile = ""
-
-    If Host.PathExists(CStr(pathText)) Then
-
-        ReadTextFile = CStr(Host.ReadTextFile(CStr(pathText)))
-
-        If Err.Number <> 0 Then
-
-            ReadTextFile = ""
-
-            Err.Clear
-
+    outRow = outRow + 1
+    For r = 2 To sourceRange.Rows.Count
+        If matchFlags(r) Then
+            For c = 1 To colCount
+                listSheet.Cells(outRow, c).Value = sourceRange.Cells(r, c).Text
+            Next
+            outRow = outRow + 1
         End If
-
-    End If
-
-    Err.Clear
-
-End Function
-
-Function WriteTextFile(pathText, contentText)
-
-    On Error Resume Next
-
-    WriteTextFile = False
-
-    WriteTextFile = Host.WriteTextFile(CStr(pathText), CStr(contentText), True)
-
+    Next
+    listSheet.Columns.AutoFit
     If Err.Number <> 0 Then
-
-        WriteTextFile = False
-
         Err.Clear
-
+        WriteSendListSheet = False
+        Exit Function
     End If
-
-    Err.Clear
-
+    WriteSendListSheet = True
 End Function
-Function ExtractRuleValue(text, keyName)
 
-    Dim lines, i, lineText, prefix
+Sub WriteSendRecordSheet(recordSheet, sceneName, recipientText, sourceName, sourceAddress, matchCount, dataRows, openCount, doneCount, overdueCount, deliveryMode, outputPath, statusField, ownerField, dateField)
+    On Error Resume Next
+    recordSheet.Cells(1, 1).Value = "发送记录"
+    recordSheet.Cells(1, 1).Font.Bold = True
+    recordSheet.Cells(1, 1).Font.Size = 13
+    recordSheet.Cells(3, 1).Value = "字段"
+    recordSheet.Cells(3, 2).Value = "值"
+    recordSheet.Rows(3).Font.Bold = True
+    recordSheet.Cells(4, 1).Value = "记录时间"
+    recordSheet.Cells(4, 2).Value = Now
+    recordSheet.Cells(5, 1).Value = "发送场景"
+    recordSheet.Cells(5, 2).Value = sceneName
+    recordSheet.Cells(6, 1).Value = "接收人"
+    recordSheet.Cells(6, 2).Value = recipientText
+    recordSheet.Cells(7, 1).Value = "源表"
+    recordSheet.Cells(7, 2).Value = sourceName
+    recordSheet.Cells(8, 1).Value = "源范围"
+    recordSheet.Cells(8, 2).Value = sourceAddress
+    recordSheet.Cells(9, 1).Value = "交付方式"
+    recordSheet.Cells(9, 2).Value = deliveryMode
+    recordSheet.Cells(10, 1).Value = "待发送行数"
+    recordSheet.Cells(10, 2).Value = matchCount
+    recordSheet.Cells(11, 1).Value = "源数据行数"
+    recordSheet.Cells(11, 2).Value = dataRows
+    recordSheet.Cells(12, 1).Value = "进行中/未完成"
+    recordSheet.Cells(12, 2).Value = openCount
+    recordSheet.Cells(13, 1).Value = "已完成"
+    recordSheet.Cells(13, 2).Value = doneCount
+    recordSheet.Cells(14, 1).Value = "逾期候选"
+    recordSheet.Cells(14, 2).Value = overdueCount
+    recordSheet.Cells(15, 1).Value = "状态字段"
+    recordSheet.Cells(15, 2).Value = statusField
+    recordSheet.Cells(16, 1).Value = "负责人字段"
+    recordSheet.Cells(16, 2).Value = ownerField
+    recordSheet.Cells(17, 1).Value = "日期字段"
+    recordSheet.Cells(17, 2).Value = dateField
+    recordSheet.Cells(18, 1).Value = "导出路径"
+    recordSheet.Cells(18, 2).Value = outputPath
+    recordSheet.Cells(19, 1).Value = "发送状态"
+    recordSheet.Cells(19, 2).Value = "已生成待发送"
+    recordSheet.Cells(20, 1).Value = "说明"
+    recordSheet.Cells(20, 2).Value = "本记录只证明清单已生成；真正定时推送可对接邮件/IM/机器人"
+    recordSheet.Columns.AutoFit
+End Sub
 
-    ExtractRuleValue = ""
-
-    prefix = LCase(Trim(CStr(keyName))) & "="
-
-    lines = Split(Replace(CStr(text), vbCrLf, vbLf), vbLf)
-
-    For i = 0 To UBound(lines)
-
-        lineText = Trim(Replace(lines(i), vbCr, ""))
-
-        If LCase(Left(lineText, Len(prefix))) = prefix Then
-
-            ExtractRuleValue = Mid(lineText, Len(prefix) + 1)
-
-            Exit Function
-
-        End If
-
+Function BuildSendListExportText(sourceRange, matchFlags, formatName, delimiter)
+    On Error Resume Next
+    Dim lines, r, c, rowText, colCount
+    lines = ""
+    colCount = sourceRange.Columns.Count
+    rowText = ""
+    For c = 1 To colCount
+        If c > 1 Then rowText = rowText & delimiter
+        rowText = rowText & EscapeExportField(CStr(sourceRange.Cells(1, c).Text), formatName)
     Next
+    lines = rowText
+    For r = 2 To sourceRange.Rows.Count
+        If matchFlags(r) Then
+            rowText = ""
+            For c = 1 To colCount
+                If c > 1 Then rowText = rowText & delimiter
+                rowText = rowText & EscapeExportField(CStr(sourceRange.Cells(r, c).Text), formatName)
+            Next
+            lines = lines & vbCrLf & rowText
+        End If
+    Next
+    BuildSendListExportText = lines
+End Function
 
+Function EscapeExportField(value, formatName)
+    Dim text
+    On Error Resume Next
+    text = CStr(value)
+    text = Replace(text, vbCrLf, " ")
+    text = Replace(text, vbCr, " ")
+    text = Replace(text, vbLf, " ")
+    If LCase(CStr(formatName)) = "tsv" Then
+        text = Replace(text, vbTab, " ")
+        EscapeExportField = text
+        Exit Function
+    End If
+    EscapeExportField = Host.CsvEscape(text)
+    If Err.Number <> 0 Or (Len(CStr(EscapeExportField)) = 0 And Len(text) > 0) Then
+        Err.Clear
+        text = Replace(text, """", """""")
+        If InStr(1, text, ",", vbBinaryCompare) > 0 Or InStr(1, text, """", vbBinaryCompare) > 0 Then
+            EscapeExportField = """" & text & """"
+        Else
+            EscapeExportField = text
+        End If
+    End If
 End Function
 
 Function GuessHeaderByKeywords(sourceRange, keywordsCsv)
-
     Dim keys, c, headerText, k
-
     GuessHeaderByKeywords = ""
-
     keys = SplitCsvFields(keywordsCsv)
-
     If Not IsArray(keys) Then Exit Function
-
     On Error Resume Next
-
     If UBound(keys) < 0 Then Exit Function
-
     For c = 1 To sourceRange.Columns.Count
-
         headerText = NormalizeCellText(sourceRange.Cells(1, c).Text)
-
         For k = 0 To UBound(keys)
-
             If Len(keys(k)) > 0 Then
-
                 If InStr(1, headerText, keys(k), vbTextCompare) > 0 Or StrComp(headerText, keys(k), vbTextCompare) = 0 Then
-
                     GuessHeaderByKeywords = CStr(sourceRange.Cells(1, c).Text)
-
                     Exit Function
-
                 End If
-
             End If
-
         Next
-
     Next
-
-    Err.Clear
-
-End Function
-
-Function BuildHeaderHint(sourceRange)
-    Dim c, n, buf, h
-    buf = ""
-    n = 0
-    On Error Resume Next
-    For c = 1 To sourceRange.Columns.Count
-        h = NormalizeCellText(sourceRange.Cells(1, c).Text)
-        If Len(h) > 0 Then
-            If Len(buf) > 0 Then buf = buf & ","
-            buf = buf & h
-            n = n + 1
-            If n >= 12 Then Exit For
-        End If
-    Next
-    If Len(buf) = 0 Then buf = "(无表头)"
-    If sourceRange.Columns.Count > n Then buf = buf & "..."
-    BuildHeaderHint = buf
     Err.Clear
 End Function
-
-Function ListNamedRuleNames(kindName)
-    Dim payload, filesPos, arrayStart, pos, nextPath, nameText, prefix, names, countShown, slashPos
-    ListNamedRuleNames = ""
-    names = ""
-    countShown = 0
-    prefix = LCase(Trim(CStr(kindName))) & "_"
-    On Error Resume Next
-    payload = CStr(Host.EnumerateFiles(SceneRulesDir(), CStr(kindName) & "_*.txt", False))
-    If Err.Number <> 0 Then
-        Err.Clear
-        Exit Function
-    End If
-    filesPos = InStr(1, payload, """files"":[", vbTextCompare)
-    If filesPos <= 0 Then Exit Function
-    arrayStart = InStr(filesPos, payload, "[")
-    If arrayStart <= 0 Then Exit Function
-    pos = arrayStart
-    Do
-        nextPath = ExtractNextJsonString(payload, pos)
-        If Len(nextPath) = 0 Then Exit Do
-        slashPos = InStrRev(nextPath, "\")
-        If slashPos <= 0 Then slashPos = InStrRev(nextPath, "/")
-        If slashPos > 0 Then
-            nameText = Mid(nextPath, slashPos + 1)
-        Else
-            nameText = nextPath
-        End If
-        nameText = LCase(Trim(CStr(nameText)))
-        If Right(nameText, 4) = ".txt" Then nameText = Left(nameText, Len(nameText) - 4)
-        If Left(nameText, Len(prefix)) = prefix Then nameText = Mid(nameText, Len(prefix) + 1)
-        If Len(nameText) > 0 And nameText <> "last" Then
-            If InStr(1, "," & names & ",", "," & nameText & ",", vbTextCompare) = 0 Then
-                If Len(names) > 0 Then names = names & ", "
-                names = names & nameText
-                countShown = countShown + 1
-                If countShown >= 12 Then
-                    names = names & "..."
-                    Exit Do
-                End If
-            End If
-        End If
-    Loop
-    ListNamedRuleNames = names
-    Err.Clear
-End Function
-
-Function ExtractNextJsonString(payload, ByRef pos)
-    Dim startPos, ch, buf, i
-    ExtractNextJsonString = ""
-    startPos = InStr(pos, CStr(payload), Chr(34))
-    If startPos <= 0 Then Exit Function
-    buf = ""
-    i = startPos + 1
-    Do While i <= Len(payload)
-        ch = Mid(payload, i, 1)
-        If ch = "\" Then
-            If i + 1 <= Len(payload) Then
-                buf = buf & Mid(payload, i + 1, 1)
-                i = i + 2
-            Else
-                Exit Do
-            End If
-        ElseIf ch = Chr(34) Then
-            ExtractNextJsonString = buf
-            pos = i + 1
-            Exit Function
-        Else
-            buf = buf & ch
-            i = i + 1
-        End If
-    Loop
-End Function
-
-Function PromptNamedRuleName(kindName)
-    Dim names, hint, ans
-    names = ListNamedRuleNames(kindName)
-    If Len(names) = 0 Then
-        hint = "暂无命名规则，可先手动配置后保存"
-    Else
-        hint = names
-    End If
-    ans = Trim(SafePrompt("命名规则名称（已有：" & hint & "）", ""))
-    PromptNamedRuleName = ans
-End Function
-
-Function PromptRuleOverride(summaryText)
-    Dim ans
-    ans = Trim(SafePrompt("将使用规则" & summaryText & vbCrLf & "回车沿用，输入“手动”可改写", ""))
-    PromptRuleOverride = (StrComp(ans, "手动", vbTextCompare) = 0 Or LCase(ans) = "manual")
-End Function
-
-
-Sub MaybeSaveRule(kindName, defaultName, contentText)
-
-    Dim ans, pathText, ok
-
-    Dim existingNames
-    existingNames = ListNamedRuleNames(kindName)
-    If Len(existingNames) = 0 Then existingNames = "无"
-    ans = Trim(SafePrompt("保存规则：否 / 上次 / 输入命名（默认 " & defaultName & "；已有：" & existingNames & "）", "上次"))
-
-    If Len(ans) = 0 Then ans = "否"
-
-    If StrComp(ans, "否", vbTextCompare) = 0 Or LCase(ans) = "no" Or LCase(ans) = "n" Then Exit Sub
-
-    If StrComp(ans, "上次", vbTextCompare) = 0 Or LCase(ans) = "last" Then
-
-        pathText = RuleFilePath(kindName, "last")
-
-    Else
-
-        pathText = RuleFilePath(kindName, ans)
-
-    End If
-
-    ok = WriteTextFile(pathText, contentText)
-
-    WriteTextFile RuleFilePath(kindName, "last"), contentText
-
-    If ok Then SafeWriteLog "规则已保存: " & pathText
-
-End Sub
 
 Function IsNothing(value)
 
