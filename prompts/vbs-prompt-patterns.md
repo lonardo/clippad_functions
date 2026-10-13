@@ -22,7 +22,7 @@
 
 目标：清理当前 Excel 区域的空白、格式和文本规范问题。
 
-约束：默认只预览；不得修改源表；确认后写入新工作表或新文件；使用 GetRangeSummary、GetHeaders、GetTypeStats 和写入计划。
+约束：默认只预览；不得修改源表；确认后写入新工作表或新文件；使用 ExcelGetHeaderMap、ExcelReadTable、GetRangeSummary、GetTypeStats、ExcelCreateOutputSheet 和写入计划。GetHeaders 只表示当前选区首行。
 
 ### excel-validation
 

@@ -5,10 +5,11 @@
 大模型至少需要同时获得：
 
 1. ../host/host-api-v1.json；
-2. ../prompts/vbs-system-prompt.md；
-3. 目标 Office 应用、文档状态、选区状态和输入输出约束；
-4. 一个同类 Host 预设作为风格和错误处理示例；
-5. 必须通过的静态检查和 smoke case。
+2. ../docs/host-api.md 里的调用配方，而不只是方法名；
+3. ../prompts/vbs-system-prompt.md；
+4. 目标 Office 应用、文档状态、选区状态和输入输出约束；
+5. 一个同类 Host 预设作为风格和错误处理示例；
+6. 必须通过的静态检查和 smoke case。
 
 ## 批量流程
 

@@ -610,6 +610,56 @@
       "name": "PollTriggers",
       "category": "trigger",
       "signature": "Host.PollTriggers()"
+    },
+    {
+      "name": "ExcelGetHeaderMap",
+      "category": "excel",
+      "signature": "Host.ExcelGetHeaderMap([address])"
+    },
+    {
+      "name": "ExcelCreateOutputSheet",
+      "category": "excel",
+      "signature": "Host.ExcelCreateOutputSheet(functionName[, outputMode][, sourceSheet][, create])"
+    },
+    {
+      "name": "ExcelWriteImpactSummary",
+      "category": "excel",
+      "signature": "Host.ExcelWriteImpactSummary(summaryJson[, sheetName])"
+    },
+    {
+      "name": "ExcelPreviewRowSamples",
+      "category": "excel",
+      "signature": "Host.ExcelPreviewRowSamples([sampleCount][, columnsCsv])"
+    },
+    {
+      "name": "ExcelDedupePlan",
+      "category": "excel",
+      "signature": "Host.ExcelDedupePlan(keyColumnsCsv[, keepPolicy])"
+    },
+    {
+      "name": "ExcelValidatePlan",
+      "category": "excel",
+      "signature": "Host.ExcelValidatePlan(rulesJson)"
+    },
+    {
+      "name": "ExcelReadTable",
+      "category": "excel",
+      "signature": "Host.ExcelReadTable([address][, maxRows])"
+    },
+    {
+      "name": "GetVbaScriptDirectory",
+      "category": "script",
+      "signature": "Host.GetVbaScriptDirectory()"
+    },
+    {
+      "name": "ResolveVbaScriptPath",
+      "category": "script",
+      "signature": "Host.ResolveVbaScriptPath(relativePath)"
+    },
+    {
+      "name": "ReadVbaScriptLib",
+      "category": "script",
+      "signature": "Host.ReadVbaScriptLib(relativePath[, maxChars])"
     }
   ]
 }

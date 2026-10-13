@@ -46,12 +46,14 @@ Option Explicit
 
 ### 强烈建议字段
 
-`搜索范围:` 和 `搜索对象:` 会进入 VBS 命令索引，帮助命令搜索和推荐判断脚本是否适合当前任务。例如：
+`搜索范围:` 和 `搜索对象:` 会进入 VBS 命令索引。命令搜索和洞察推荐都用它们判断脚本是否适合当前任务。允许值是封闭的：
 
-```text
-' 搜索范围: 选区
-' 搜索对象: 文本
-```
+| 字段 | 允许值 |
+|---|---|
+| `搜索范围:` | `无`、`选区`、`当前范围`、`全文`、`指定范围` |
+| `搜索对象:` | `无`、`文本`、`公式`、`图表` |
+
+只有脚本离开该范围或对象就无法有意义执行时，才写限制值。处理当前区域、全文或用户稍后指定的范围时，`搜索对象` 写 `无`。拿不准时用 `全文` 和 `无`。不要因为名称里有「公式」或「图表」就写限制对象，也不要写 `表格`、`幻灯片`、`当前工作簿` 这类未登记的值。
 
 ### 兼容别名和审核字段
 
@@ -99,11 +101,35 @@ Set appObj = Host.GetApplication()
 
 失败也返回稳定的 `code` 和中英文 `message`，不要把完整客户文档、密钥或内部路径写入结果、日志、Issue 或 PR。
 
-## 7. 提交前清单
+## 7. 洞察推荐规则
+
+洞察推荐的是已经安装的受信任脚本，不是一段临时生成后直接运行的代码。推荐成立需要两层信息：
+
+1. 脚本头部说明它适合什么应用、范围和对象。卡片上的名称和说明来自 `函数名` 与 `描述`。
+2. 用户确认后的头部声明 `' @insightBinding {"schemaVersion":1,"policy":"local_trusted","bindings":[...]}` 说明它对应哪个已发布场景。拷贝这个 `.vbs` 会把声明一起带走。
+
+`bindings` 里每条包含 `triggerId`、`apps`、`confirmMode`、`minRepeat`、`cooldownSec`、`enabled`。索引文件可以出现在 `VBA Script` 同级目录 `Insight Bindings\<文件名>.vbs.binding.json`，用来避免脚本目录里堆绑定文件。本地已确认声明不依赖这份索引。旧的同目录 `<文件名>.vbs.binding.json` 会在读取时迁出脚本目录；没有头部声明时，过期哈希的旧索引不会被推荐。
+
+本地可声明的 `triggerId` 只有：
+
+- `insight.format.font.bold`、`insight.format.font.color`、`insight.format.font.size`：仅 Word；
+- `insight.format.repeat`、`insight.edit.repeat`、`insight.selection.find_replace`：Word 或 Excel。
+
+`insight.document.save.repeat` 不能写进本地绑定。未知编号一律拒绝。`confirmMode` 只能是 `preview_first` 或 `required`。`auto` 会被拒绝。`preview_first` 先预演再写入，`required` 要求明确确认。`minRepeat` 至少为 1，`cooldownSec` 至少为 20。`apps` 使用 `word`、`excel`、`powerpoint`，并且必须落在该场景允许的应用里。
+
+`@insightProposal` 可以出现在头部连续注释中，表示模型或作者提出的待审建议。宿主只会提取这一行。它永远不是已启用绑定。用户确认之后，宿主才写入 `@insightBinding`。模型不要写 `@insightBinding`，也不要在运行时登记触发器。无效声明不会回退到旧索引。
+
+准备进入公共或市场分发的脚本使用 `market_restricted`：只能有一条绑定，冷却至少 300 秒，并且需要审核。本地受信任脚本使用 `local_trusted`，最多 16 条绑定。
+
+不要在 VBS 正文里调用不存在的 `Host.ExcelListSheetCatalog`、`Host.ExcelInsertNamedChart` 或 `Host.ExcelCreateQueryDraft`，也不要发明新的 `triggerId` 来换取推荐。
+
+## 8. 提交前清单
 
 - [ ] 文件是 UTF-8 BOM，扩展名为 `.vbs`；
 - [ ] 头部连续注释位于 `Option Explicit` 和所有代码之前；
 - [ ] 有 `函数名`、`描述`/`Description`、`适用应用`；
+- [ ] `搜索范围` 和 `搜索对象` 使用允许值；拿不准时是 `全文` 和 `无`；
+- [ ] 若声明洞察绑定，写的是已确认的 `@insightBinding`，不是 `@insightProposal`；`triggerId` 来自已发布场景，`confirmMode` 不是 `auto`；
 - [ ] 有无参数 `Function Main()`；
 - [ ] 所有 `Host.*` 方法存在于公共 Host API 契约；
 - [ ] 不使用公共包禁止的旧式 COM/脚本入口；

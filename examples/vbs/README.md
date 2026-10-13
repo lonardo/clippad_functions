@@ -19,7 +19,7 @@
 
 硬性要求：
 1. 文件使用 UTF-8 BOM；
-2. 文件最前面先写连续的单引号元数据注释：函数名、描述、适用应用、搜索范围、搜索对象；
+2. 文件最前面先写连续的单引号元数据注释：函数名、描述、适用应用、搜索范围、搜索对象。搜索范围只能是无、选区、当前范围、全文、指定范围；搜索对象只能是无、文本、公式、图表。拿不准时用全文和无；
 3. 必须提供无参数 Function Main()，不要改名；
 4. 只能使用 host-api-v1.json 中存在的 Host 方法；
 5. 不使用 CreateObject、GetObject、WScript.Shell、FileSystemObject、ADODB.Stream、InputBox 或 MsgBox；
