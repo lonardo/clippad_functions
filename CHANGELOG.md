@@ -1,5 +1,11 @@
 # Changelog
 
+## 2026-10-13 文档补充
+
+- 任务边界补上命名图表、工作表目录和 Power Query。这些还没有对应 Host 方法，按 docs/host-api.md 的当前可达写法生成，不要调用未注册方法。
+- 生成说明同时指向 host-api.md 和 vbs-prompt-patterns.md。
+- 本次只更新文档，不改变公开 VBS 导出编号 community-v0.1.5。
+
 ## community-v0.1.5 - 2026-08-13
 
 - 同步正式客户端 1.0.0.1008 安装包中的全部 Host-first 预设脚本，使公开包与最新已发布载荷一致。

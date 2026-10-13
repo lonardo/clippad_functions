@@ -6,7 +6,7 @@
 
 1. ../host/host-api-v1.json；
 2. ../docs/host-api.md 里的调用配方，而不只是方法名；
-3. ../prompts/vbs-system-prompt.md；
+3. ../prompts/vbs-system-prompt.md 和 ../prompts/vbs-prompt-patterns.md 里的任务边界；
 4. 目标 Office 应用、文档状态、选区状态和输入输出约束；
 5. 一个同类 Host 预设作为风格和错误处理示例；
 6. 必须通过的静态检查和 smoke case。

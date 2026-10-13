@@ -24,6 +24,24 @@
 
 约束：默认只预览；不得修改源表；确认后写入新工作表或新文件；使用 ExcelGetHeaderMap、ExcelReadTable、GetRangeSummary、GetTypeStats、ExcelCreateOutputSheet 和写入计划。GetHeaders 只表示当前选区首行。
 
+### excel-named-chart
+
+目标：基于已确认的数据区域生成命名图表。
+
+约束：Host 还没有 ExcelInsertNamedChart。先用 ExcelGetHeaderMap 或 GetAddress 确认区域，ConfirmStep 确认类型、系列方向、对象名和字体，再用当前 Application 的 ChartObjects.Add。图表类型必须写数字常量：柱状簇 51、折线 4、饼图 5。系列按行是 1，按列是 2。插入后立刻设置 ChartObjects 的 Name。失败或取消时按这个名字删除。不要改源区域的值和格式。不要 CreateObject 新 Excel，不要 Quit。透视字段角色未确认时不要创建透视表。
+
+### excel-sheet-catalog
+
+目标：列出当前工作簿的表名和各表首行。
+
+约束：Host 还没有 ExcelListSheetCatalog。用已经注入的 Application 只读遍历 Worksheets，列数上限 32。结果只放表名、地址和表头，不把单元格明细写入日志。不要 CreateObject 新 Excel，不要 Quit。
+
+### excel-query-boundary
+
+目标：只有用户明确要求创建查询时才考虑 Power Query。
+
+约束：Host 还没有 ExcelCreateQueryDraft。Workbook.Queries 不可用就返回明确失败，并改走已有清洗预设。默认不 Refresh。不要把刷新、隐私级别或凭据对话框包成成功。
+
 ### excel-validation
 
 目标：检查必填、日期、金额、手机号、错误值和重复键。
@@ -34,7 +52,7 @@
 
 目标：根据用户确认的字段映射生成新工作表或交付文件。
 
-约束：先展示源字段、目标字段、行数和输出路径；源表保持不变；避免覆盖已有文件。
+约束：先用 ExcelGetHeaderMap 核对表头。缺表头就停止，不要猜列号。GetHeaders 只表示当前选区首行。先展示源字段、目标字段、行数和输出路径；源表保持不变；避免覆盖已有文件。
 
 ### word-format-preview
 

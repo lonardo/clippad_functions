@@ -123,7 +123,7 @@ Function Main()
 End Function
 ```
 
-`函数名`是显示名，不是入口函数；入口函数必须仍然叫 `Main`。更多生成提示词见 [`prompts/vbs-system-prompt.md`](prompts/vbs-system-prompt.md)，生成示例见 [`examples/vbs/README.md`](examples/vbs/README.md)。
+`函数名`是显示名，不是入口函数；入口函数必须仍然叫 `Main`。调用配方见 [`docs/host-api.md`](docs/host-api.md)。更多生成提示词见 [`prompts/vbs-system-prompt.md`](prompts/vbs-system-prompt.md)，任务边界见 [`prompts/vbs-prompt-patterns.md`](prompts/vbs-prompt-patterns.md)，生成示例见 [`examples/vbs/README.md`](examples/vbs/README.md)。
 
 ## 头部注释标准
 
