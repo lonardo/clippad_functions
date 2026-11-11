@@ -115,7 +115,7 @@ Set appObj = Host.GetApplication()
 - `insight.format.font.bold`、`insight.format.font.color`、`insight.format.font.size`：仅 Word；
 - `insight.format.repeat`、`insight.edit.repeat`、`insight.selection.find_replace`：Word 或 Excel。
 
-`insight.document.save.repeat` 不能写进本地绑定。未知编号一律拒绝。`confirmMode` 只能是 `preview_first` 或 `required`。`auto` 会被拒绝。`preview_first` 先预演再写入，`required` 要求明确确认。`minRepeat` 至少为 1，`cooldownSec` 至少为 20。`apps` 使用 `word`、`excel`、`powerpoint`，并且必须落在该场景允许的应用里。
+`insight.document.save.repeat` 不能写进本地绑定。未知编号一律拒绝。`confirmMode` 请写 `required`。空值或 `preview_first` 会被接受并按 `required` 处理，不会只因为写成 `preview_first` 就先打开预演。`auto` 会被拒绝。确认已保存指令会直接运行该指令，不再强制先打开工作台预演。脚本已变更的绑定只展示，不能再触发或执行。`minRepeat` 至少为 1，`cooldownSec` 至少为 20。`apps` 使用 `word`、`excel`、`powerpoint`，并且必须落在该场景允许的应用里。`insight.format.font.size` 仍只允许 Word。PowerPoint 对同一处文字反复改字号的提示是宿主提示，不会自动改文档，也不是新的可绑定场景。
 
 `@insightProposal` 可以出现在头部连续注释中，表示模型或作者提出的待审建议。宿主只会提取这一行。它永远不是已启用绑定。用户确认之后，宿主才写入 `@insightBinding`。模型不要写 `@insightBinding`，也不要在运行时登记触发器。无效声明不会回退到旧索引。
 

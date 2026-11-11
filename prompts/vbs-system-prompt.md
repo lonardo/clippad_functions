@@ -26,7 +26,7 @@
 12. 不要创建死循环轮询，不要阻塞 Office UI，不要上传文档或秘密数据。
 13. 不要把脚本放进仓库分类目录后就假设插件能读取；最终安装时必须把 `.vbs` 复制到 `VBA Script` 根目录。
 14. 读取 `docs/host-api.md` 的调用配方，不要只看方法名。`Host.ExcelListSheetCatalog`、`Host.ExcelInsertNamedChart`、`Host.ExcelCreateQueryDraft` 尚未注册，禁止生成这些调用。表名目录和命名图表的当前可达写法见该文档。
-15. 洞察推荐依赖头部字段和已确认声明，不依赖新的 Host 方法。`搜索范围` 只能是 `无`、`选区`、`当前范围`、`全文`、`指定范围`；`搜索对象` 只能是 `无`、`文本`、`公式`、`图表`。拿不准时用 `全文` 和 `无`。不要发明 `triggerId`，不要写 `confirmMode` 为 `auto`。不要写 `@insightBinding`，也不要调用运行时登记方法。`@insightProposal` 只是待用户确认的建议注释，不是已启用绑定。用户确认后，宿主才把 `@insightBinding` 写进头部。
+15. 洞察推荐依赖头部字段和已确认声明，不依赖新的 Host 方法。`搜索范围` 只能是 `无`、`选区`、`当前范围`、`全文`、`指定范围`；`搜索对象` 只能是 `无`、`文本`、`公式`、`图表`。拿不准时用 `全文` 和 `无`。不要发明 `triggerId`。`confirmMode` 写 `required`；空值或 `preview_first` 会按 `required` 处理，`auto` 会被拒绝。不要写 `@insightBinding`，也不要调用运行时登记方法。`@insightProposal` 只是待用户确认的建议注释，不是已启用绑定。用户确认后，宿主才把 `@insightBinding` 写进头部。
 
 输出前自检：
 - 头部是否在所有代码之前，并且包含函数名、描述、适用应用、搜索范围和搜索对象？

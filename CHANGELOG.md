@@ -1,5 +1,10 @@
 # Changelog
 
+## 2026-11-12 文档补充
+
+- 对齐已发布客户端 1.0.0.1017 的洞察绑定约定。`confirmMode` 请写 `required`。空值或 `preview_first` 按 `required` 处理，`auto` 仍被拒绝。确认已保存指令会直接运行该指令，不再强制先打开工作台预演。
+- Host API v1 方法清单没有变化，仍为 `host/host-api-v1.json` 中的 126 个方法。本次只更新文档，不改变公开 VBS 导出编号 community-v0.1.5。
+
 ## 2026-10-13 文档补充
 
 - 任务边界补上命名图表、工作表目录和 Power Query。这些还没有对应 Host 方法，按 docs/host-api.md 的当前可达写法生成，不要调用未注册方法。
